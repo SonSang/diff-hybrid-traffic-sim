@@ -1,0 +1,17 @@
+astroid==2.12.6
+certifi @ file:///opt/conda/conda-bld/certifi_1655968806487/work/certifi
+dill==0.3.5.1
+isort==5.10.1
+lazy-object-proxy==1.7.1
+mccabe==0.7.0
+numpy==1.21.6
+platformdirs==2.5.2
+-e git+https://github.com/SonSang/pydifftraffic.git@47a0b294202be9e4ccc167129715df4272971a0f#egg=pydifftraffic&subdirectory=../../pydifftraffic
+pygicp==0.0.1
+pylint==2.15.0
+tomli==2.0.1
+tomlkit==0.11.4
+torch==1.12.1
+typed-ast==1.5.4
+typing_extensions==4.3.0
+wrapt==1.14.1
