@@ -199,7 +199,7 @@ class dMacroLane(MacroLane):
         Change cell states in pytorch Tensor to plain floating point number.
         '''
 
-        nc = MacroLane.Cell(cell.start, cell.end)
+        nc = MacroLane.Cell(cell.start, cell.end, cell.state.u_max)
 
         nc.state.u_max = cell.state.u_max
         nc.state.u = cell.state.u
@@ -261,8 +261,7 @@ class dMacroForwardLayer(th.autograd.Function):
 
         # set context;
 
-        ctx.lane = lane
-        ctx.frame = len(lane.d_lane) - 1
+        ctx.dqs = lane.d_lane[-1].dqs
 
         # return state vector r and y, and fluxes at boundary;
 
@@ -275,20 +274,21 @@ class dMacroForwardLayer(th.autograd.Function):
 
         # compute gradients in our lane;
 
-        lane: dMacroLane = ctx.lane
-        frame = ctx.frame
+        dqs: np.ndarray = ctx.dqs
+        dqs = dqs.transpose((0, 1, 3, 2))
+
+        num_cell = len(grad_nr)
 
         # compute gradients to propagate;
 
-        grad_ncell = np.zeros((lane.num_cell, 1, 2, 1), dtype=np.float32)
+        grad_ncell = np.zeros((num_cell, 1, 2, 1), dtype=np.float32)
         grad_ncell[:, 0, 0, 0] = grad_nr.numpy()
         grad_ncell[:, 0, 1, 0] = grad_ny.numpy()
 
-        dqs = lane.d_lane[frame].dqs.transpose((0, 1, 3, 2))
         grad_cell = np.matmul(dqs, grad_ncell)  # transpose needed;
         grad_cell = np.squeeze(grad_cell, axis=-1)
 
-        grad_ry = np.zeros((lane.num_cell + 2, 2), dtype=np.float32)
+        grad_ry = np.zeros((num_cell + 2, 2), dtype=np.float32)
         grad_ry[1:-1] = grad_cell[:, 1, :]
         grad_ry[2:-1] += grad_cell[:-1, 2, :]
         grad_ry[1:-2] += grad_cell[1:, 0, :]

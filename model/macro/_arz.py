@@ -63,7 +63,7 @@ class ARZ:
 
         @staticmethod
         def from_q(q, u_max):
-            fq = ARZ.FullQ()
+            fq = ARZ.FullQ(u_max)
             fq.q = q
             fq.u_max = u_max
             fq.u = ARZ.compute_u(q.r, q.y, u_max)
@@ -72,7 +72,7 @@ class ARZ:
 
         @staticmethod
         def from_r_u(r, u, u_max):
-            fq = ARZ.FullQ()
+            fq = ARZ.FullQ(u_max)
             fq.q = ARZ.Q.from_r_u(r, u, u_max)
             fq.u_max = u_max
             fq.u = u
@@ -157,7 +157,7 @@ class ARZ:
         Q Left.
         '''
 
-        nQ = ARZ.FullQ()
+        nQ = ARZ.FullQ(Q_L.u_max)
         nQ.set_r_y(Q_L.q.r, Q_L.q.y, Q_L.u_max)     # same as Q_L
 
         return nQ
@@ -169,7 +169,7 @@ class ARZ:
         Centered Rarefaction.
         '''
     
-        Q_c = ARZ.FullQ()
+        Q_c = ARZ.FullQ(u_max)
         Q_c.u_max = u_max
 
         Q_c.q.r = ((Q_L.u + u_max * (Q_L.q.r ** gamma)) / ((gamma + 1) * u_max)) ** (1.0 / gamma)
@@ -186,7 +186,7 @@ class ARZ:
         Q Middle.
         '''
 
-        Q_m = ARZ.FullQ()
+        Q_m = ARZ.FullQ(u_max)
         Q_m.u_max = u_max
 
         Q_m.q.r = ((Q_L.q.r ** gamma) + ((Q_L.u - Q_R.u) / u_max)) ** (1.0 / gamma)
@@ -204,7 +204,7 @@ class ARZ:
             
             self.speed0 = 0
             self.speed1 = 0
-            self.Q_0 = ARZ.FullQ()
+            self.Q_0 = ARZ.FullQ(0)
             self.case_ind = -1      # 0 = Q_L, 1 = Q_M, 2 = Q_C
 
     @staticmethod

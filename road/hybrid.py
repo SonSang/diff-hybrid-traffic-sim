@@ -139,3 +139,23 @@ class Hybrid:
             next_lane.curr_cell[0].state.u = \
                 ((next_cell_length * p_r * p_u) + (overlap_size * head_speed)) / \
                 (next_cell_length * p_r + overlap_size)
+
+    @staticmethod
+    def micro_to_micro(prev_lane: MicroLane, next_lane: MicroLane):
+        
+        if prev_lane.num_vehicle() == 0:
+            
+            return
+
+        hv = prev_lane.curr_vehicle[-1]
+        head_position = hv.position
+
+        if head_position >= prev_lane.length:
+
+            head_position = head_position - prev_lane.length
+
+            hv.position = head_position
+            
+            next_lane.add_tail_vehicle(hv)
+
+            prev_lane.curr_vehicle = prev_lane.curr_vehicle[:-1]

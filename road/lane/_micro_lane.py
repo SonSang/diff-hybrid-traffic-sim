@@ -11,6 +11,9 @@ from model.micro._idm import IDM
 
 from typing import List, Union
 
+DEFAULT_HEAD_POSITION_DELTA = 1e3
+DEFAULT_HEAD_SPEED_DELTA = 0
+
 class MicroLane(BaseLane):
 
     '''
@@ -36,8 +39,13 @@ class MicroLane(BaseLane):
 
         # value to use for the head vehicle, which does not have leading vehicle;
 
-        self.head_position_delta = 1e3
-        self.head_speed_delta = 0
+        self.head_position_delta = DEFAULT_HEAD_POSITION_DELTA
+        self.head_speed_delta = DEFAULT_HEAD_SPEED_DELTA
+
+        # brdy callback;
+
+        self.bdry_callback = None
+        self.bdry_callback_args = {'lane': self}
 
     def is_macro(self):
         return False
@@ -108,7 +116,8 @@ class MicroLane(BaseLane):
 
         if id == len(self.curr_vehicle) - 1:
 
-            position_delta, speed_delta = self.compute_head_state_delta()
+            position_delta = self.head_position_delta
+            speed_delta = self.head_speed_delta
 
         else:
 
@@ -120,28 +129,6 @@ class MicroLane(BaseLane):
 
         return position_delta, speed_delta
 
-    def compute_head_state_delta(self):
-
-        '''
-        Compute position and speed delta for head vehicle.
-        It depends on the next lane's existence and its type.
-        '''
-
-        if self.next_lane is None:
-
-            return self.head_position_delta, self.head_speed_delta
-
-        n_lane = self.next_lane
-
-        while n_lane.is_micro():
-
-            # search through every next lane in the route and
-            # 
-
-            pass
-
-
-
     def update_state(self):
         
         '''
@@ -151,7 +138,7 @@ class MicroLane(BaseLane):
         for i, mv in enumerate(self.curr_vehicle):
 
             mv.position = self.next_vehicle_position[i]
-            mv.speed = self.next_vehicle_speed[i]
+            mv.speed = self.next_vehicle_speed[i]        
 
     def set_state_vector(self, position: th.Tensor, speed: th.Tensor):
 
@@ -260,12 +247,12 @@ class MicroLane(BaseLane):
         # min space ahead;
         
         min_space = np.random.rand()
-        min_space = np.interp(min_space, [0, 1], [vehicle_length * 0.5, vehicle_length * 1.0])
+        min_space = np.interp(min_space, [0, 1], [vehicle_length * 0.2, vehicle_length * 0.4])
 
         # preferred time to go;
         
         time_pref = np.random.rand()
-        time_pref = np.interp(time_pref, [0, 1], [1.0, 3.0])
+        time_pref = np.interp(time_pref, [0, 1], [0.2, 0.6])
 
         return MicroVehicle(0, 0, a_max, a_pref, target_speed, min_space, time_pref, vehicle_length, vehicle_length)
 

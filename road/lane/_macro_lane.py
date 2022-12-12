@@ -7,7 +7,6 @@ import torch as th
 import numpy as np
 
 from road.lane._base_lane import BaseLane
-from road.lane._micro_lane import MicroLane
 from model.macro._arz import ARZ
 
 from typing import List, Union
@@ -67,6 +66,11 @@ class MacroLane(BaseLane):
         # flux capacitor used for hybrid simulation;
         
         self.flux_capacitor = th.zeros((1,), dtype=th.float32)
+
+        # bdry callback;
+
+        self.bdry_callback = None
+        self.bdry_callback_args = {'lane': self}
 
     def is_macro(self):
         
@@ -159,88 +163,11 @@ class MacroLane(BaseLane):
 
     def get_leftmost_cell(self):
         
-        '''
-        If there is prev lane, use its info to compute left cell; if not, use [self.left_cell].
-        '''
-        
-        if self.prev_lane is not None:
-
-            if self.prev_lane.is_macro():
-            
-                p_lane: MacroLane = self.prev_lane
-                left_cell = p_lane.curr_cell[-1]
-            
-            else:
-            
-                # assume vacant cell if prev lane is micro lane;
-
-                left_cell = ARZ.FullQ.from_r_u(0.0, self.speed_limit, self.speed_limit)
-
-        else:
-
-            left_cell = self.leftmost_cell
-
-        return left_cell
+        return self.leftmost_cell
 
     def get_rightmost_cell(self):
 
-        '''
-        If there is next lane, use its info to compute right cell; if not, use [self.right_cell].
-        '''
-
-        if self.next_lane is not None:
-
-            if self.next_lane.is_macro():
-
-                n_lane: MacroLane = self.next_lane
-                
-                return n_lane.curr_cell[0]
-
-            else:
-
-                # if next lane is micro lane, accumulate discrete vehicle's
-                # states to get aggregated macro state;
-
-                n_lane: MicroLane = self.next_lane
-
-                min_lane_length = self.cell_length
-                
-                sum_lane_length = 0
-                sum_num_vehicle = 0
-
-                avg_density = 0
-                avg_speed = 0
-
-                while True:
-                    
-                    sum_lane_length += n_lane.length
-                    sum_num_vehicle += n_lane.num_vehicle()
-
-                    avg_density += n_lane.length * n_lane.avg_density()
-                    avg_speed += n_lane.num_vehicle() * n_lane.avg_speed()
-
-                    n_lane = n_lane.next_lane
-
-                    if sum_lane_length > min_lane_length or \
-                        n_lane is None or \
-                        n_lane.is_macro():
-
-                        break
-
-                avg_density = avg_density / sum_lane_length
-                avg_speed = avg_speed / sum_num_vehicle
-
-                virtual_cell = MacroLane.Cell(0, sum_lane_length)
-                virtual_cell.state = ARZ.FullQ.from_r_u(avg_density, avg_speed, self.next_lane.speed_limit)
-
-                return virtual_cell
-
-        else:
-
-            right_cell = self.rightmost_cell
-
-        return right_cell
-        
+        return self.rightmost_cell
             
     def get_left_cell(self, id):
         
@@ -279,6 +206,7 @@ class MacroLane(BaseLane):
         '''
 
         for i in range(self.num_cell):
+
             self.curr_cell[i].state.q.r = self.next_cell[i].state.q.r
             self.curr_cell[i].state.q.y = self.next_cell[i].state.q.y
             self.curr_cell[i].state.u = self.next_cell[i].state.u
@@ -286,7 +214,8 @@ class MacroLane(BaseLane):
         
         # update flux capacitor if next lane is micro lane;
 
-        if self.next_lane is not None and self.next_lane.is_micro():
+        if self.next_lane is not None and self.curr_next_lane != -1:
+
             self.flux_capacitor += self.curr_cell[-1].state.q.r * self.curr_cell[-1].state.u
 
     def set_state_vector_y(self, 

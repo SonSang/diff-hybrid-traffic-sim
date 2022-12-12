@@ -139,14 +139,16 @@ class dMicroLane(MicroLane):
 
         cp, cs = self.get_state_vector()
 
-        head_position = th.zeros((1,), dtype=th.float32)
-        head_position[0] = cp[-1] + self.head_position_delta
+        if len(cp) and len(cs):
 
-        head_speed = th.zeros((1,), dtype=th.float32)
-        head_speed[0] = cs[-1] - self.head_speed_delta
+            head_position = th.zeros((1,), dtype=th.float32)
+            head_position[0] = cp[-1] + self.head_position_delta
 
-        cp = th.cat([cp, head_position])
-        cs = th.cat([cs, head_speed])
+            head_speed = th.zeros((1,), dtype=th.float32)
+            head_speed[0] = cs[-1] - self.head_speed_delta
+
+            cp = th.cat([cp, head_position])
+            cs = th.cat([cs, head_speed])
 
         return cp, cs
 
@@ -251,8 +253,7 @@ class dMicroForwardLayer(th.autograd.Function):
 
         # set context;
 
-        ctx.lane = lane
-        ctx.frame = len(lane.d_lane) - 1
+        ctx.dqs = lane.d_lane[-1].dqs
 
         # return state vector r and y, and fluxes at boundary;
 
@@ -263,20 +264,21 @@ class dMicroForwardLayer(th.autograd.Function):
     @staticmethod
     def backward(ctx, grad_np: th.Tensor, grad_ns: th.Tensor):
 
-        lane: dMicroLane = ctx.lane
-        frame = ctx.frame
+        dqs: np.ndarray = ctx.dqs
+        dqs = dqs.transpose((0, 1, 3, 2))
+
+        num_vehicle = len(grad_np)
         
         # compute gradients to propagate;
 
-        grad_nvehicle = np.zeros((lane.num_vehicle(), 1, 2, 1), dtype=np.float32)
+        grad_nvehicle = np.zeros((num_vehicle, 1, 2, 1), dtype=np.float32)
         grad_nvehicle[:, 0, 0, 0] = grad_np
         grad_nvehicle[:, 0, 1, 0] = grad_ns
 
-        dqs = np.transpose(lane.d_lane[frame].dqs, (0, 1, 3, 2))
         grad_vehicle = np.matmul(dqs, grad_nvehicle)        # transpose needed;
         grad_vehicle = np.squeeze(grad_vehicle, -1)
 
-        grad_ps = np.zeros((lane.num_vehicle() + 1, 2), dtype=np.float32)
+        grad_ps = np.zeros((num_vehicle + 1, 2), dtype=np.float32)
         grad_ps[:-1] = grad_vehicle[:, 0, :]
         grad_ps[1:] += grad_vehicle[:, 1, :]
 
