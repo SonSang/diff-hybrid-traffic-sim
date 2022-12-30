@@ -9,7 +9,7 @@ import numpy as np
 from road.lane._base_lane import BaseLane
 from model.macro._arz import ARZ
 
-from typing import List, Union
+from typing import List, Union, Dict
 
 class MacroLane(BaseLane):
     
@@ -65,7 +65,7 @@ class MacroLane(BaseLane):
 
         # flux capacitor used for hybrid simulation;
         
-        self.flux_capacitor = th.zeros((1,), dtype=th.float32)
+        self.flux_capacitor: Dict[int, float] = {}
 
         # bdry callback;
 
@@ -211,12 +211,18 @@ class MacroLane(BaseLane):
             self.curr_cell[i].state.q.y = self.next_cell[i].state.q.y
             self.curr_cell[i].state.u = self.next_cell[i].state.u
             self.curr_cell[i].state.u_eq = self.next_cell[i].state.u_eq
-        
-        # update flux capacitor if next lane is micro lane;
 
-        if self.next_lane is not None and self.curr_next_lane != -1:
+    def add_flux_capacitor(self, next_lane_id, increment):
 
-            self.flux_capacitor += self.curr_cell[-1].state.q.r * self.curr_cell[-1].state.u
+        '''
+        Add [increment] to the flux capacitor corresponding to the given next lane.
+        '''
+
+        if not next_lane_id in self.flux_capacitor.keys():
+
+            self.flux_capacitor[next_lane_id] = 0.0
+
+        self.flux_capacitor[next_lane_id] = self.flux_capacitor[next_lane_id] + increment
 
     def set_state_vector_y(self, 
                             rv: Union[th.Tensor, np.ndarray], 
@@ -342,3 +348,5 @@ class MacroLane(BaseLane):
         for cell in self.next_cell:
 
             cell.state.clear()
+
+        self.flux_capacitor.clear()

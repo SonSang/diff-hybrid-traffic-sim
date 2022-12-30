@@ -1,42 +1,15 @@
-from example.control.itscp._env import ItscpEnv, LaneID
-from typing import List, Dict
-
-def itscp_schedule(lane_id: List[LaneID], num_timestep: int):
-
-    '''
-    Set a schedule.
-    '''
-
-    schedule: Dict[LaneID, List[float]] = {}
-
-    for id in lane_id:
-
-        curr_schedule = []
-
-        for _ in range(num_timestep):
-
-            if id.loc == 'south' or id.loc == 'north':
-
-                r = 1.0
-
-            else:
-
-                r = 0.0
-
-            curr_schedule.append(r)
-
-        schedule[id] = curr_schedule
-
-    return schedule
+from example.control.itscp._env import ItscpEnv
+from example.control.itscp.problem import problem_0, problem_1, problem_2
 
 env = ItscpEnv()
-env.schedule_callback = itscp_schedule
+env.schedule_callback = problem_0
 env.config['num_intersection'] = 1 # 1 for fast sim
-env.config['num_lane'] = 3
+env.config['num_lane'] = 1
 env.config['mode'] = 'micro'
+env.config['max_num_micro_vehicle_per_lane'] = 20
 env.reset()
 
-action = [0.5 for _ in range((env.config['num_intersection'] ** 2) * 3)]
+action = [0.4816, 0.4593, 0.4681] # [0.4821, 0.4607, 0.4704] # [0.5 for _ in range((env.config['num_intersection'] ** 2) * 3)]
 
 while True:
 
@@ -44,5 +17,5 @@ while True:
 
     for _ in range(env.num_timestep):
         
-        env._simulate_step(action)
+        env._simulate_step_B(action, True)
         env.render(action)

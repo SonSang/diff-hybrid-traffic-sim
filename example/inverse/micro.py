@@ -10,7 +10,7 @@ import time
 import torch as th
 
 from example.inverse._inverse import InverseProblem
-from road.road_network import RoadNetwork
+from road.network.road_network import RoadNetwork
 from road.lane.dmicro_lane import dMicroLane
 
 class MicroInverseProblem(InverseProblem):
@@ -200,8 +200,8 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser("Script to solve inverse problem microscopic traffic simulation")
     parser.add_argument("--n_trial", type=int, default=5)
-    parser.add_argument("--n_vehicle", type=int, default=10)
-    parser.add_argument("--n_timestep", type=int, default=10)
+    parser.add_argument("--n_vehicle", type=int, default=100)
+    parser.add_argument("--n_timestep", type=int, default=1000)
     parser.add_argument("--vehicle_length", type=float, default=5.0)
     parser.add_argument("--speed_limit", type=float, default=30.0)
     parser.add_argument("--delta_time", type=float, default=0.03)

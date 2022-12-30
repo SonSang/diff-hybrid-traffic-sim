@@ -197,7 +197,8 @@ class dMicroLane(MicroLane):
         Change vehicle states in pytorch Tensor to plain floating point number.
         '''
 
-        nv = MicroVehicle(vehicle.position, 
+        nv = MicroVehicle(vehicle.id,
+                            vehicle.position, 
                             vehicle.speed, 
                             vehicle.accel_max, 
                             vehicle.accel_pref, 

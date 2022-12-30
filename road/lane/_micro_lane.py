@@ -2,17 +2,19 @@
 @ author: SonSang (Sanghyun Son)
 @ email: shh1295@gmail.com
 '''
-import numpy as np
 import torch as th
 
 from road.lane._base_lane import BaseLane
 from road.vehicle.micro_vehicle import MicroVehicle
 from model.micro._idm import IDM
+from dmath.operation import sigmoid
 
 from typing import List, Union
 
-DEFAULT_HEAD_POSITION_DELTA = 1e3
+DEFAULT_HEAD_POSITION_DELTA = 1000
 DEFAULT_HEAD_SPEED_DELTA = 0
+
+POSITION_DELTA_EPS = 1e-5
 
 class MicroLane(BaseLane):
 
@@ -42,11 +44,6 @@ class MicroLane(BaseLane):
         self.head_position_delta = DEFAULT_HEAD_POSITION_DELTA
         self.head_speed_delta = DEFAULT_HEAD_SPEED_DELTA
 
-        # brdy callback;
-
-        self.bdry_callback = None
-        self.bdry_callback_args = {'lane': self}
-
     def is_macro(self):
         return False
 
@@ -61,10 +58,76 @@ class MicroLane(BaseLane):
 
         self.curr_vehicle.insert(0, vehicle)
 
+    def add_vehicle(self, vehicle: MicroVehicle):
+
+        # find proper index to insert;
+
+        assert vehicle.position >= 0 and vehicle.position <= self.length, ""
+
+        if self.num_vehicle() == 0:
+
+            self.add_head_vehicle(vehicle)
+
+            return
+
+        for i, v in enumerate(self.curr_vehicle):
+
+            if v.position > vehicle.position:
+
+                # insert at tail;
+
+                assert i == 0 and v.position - vehicle.position >= (v.length + vehicle.length) * 0.5, ""
+
+                self.add_tail_vehicle(vehicle)
+                
+                break
+
+            else:
+
+                pv = v
+
+                # check if the vehicle collides with following vehicle;
+
+                assert vehicle.position - pv.position > (vehicle.length + pv.length) * 0.5, ""
+
+                if i == self.num_vehicle() - 1:
+
+                    self.add_head_vehicle(vehicle)
+
+                else:
+
+                    nv = v
+
+                    if nv.position > vehicle.position:
+
+                        # check if the vehicle collides with leading vehicle;
+
+                        assert nv.position - vehicle.position > (vehicle.length + nv.length) * 0.5, ""
+
+                        self.curr_vehicle.insert(i + 1, vehicle)
+
+                    else:
+
+                        continue
+
+                break
+
     def num_vehicle(self):
 
         return len(self.curr_vehicle)
             
+    def get_head_vehicle(self):
+
+        assert self.num_vehicle(), ""
+
+        return self.curr_vehicle[-1]
+
+    def get_tail_vehicle(self):
+
+        assert self.num_vehicle(), ""
+
+        return self.curr_vehicle[0]
+
     def forward(self, delta_time: float):
 
         '''
@@ -85,7 +148,22 @@ class MicroLane(BaseLane):
 
             position_delta, speed_delta = self.compute_state_delta(vi)
 
+            try:
+
+                self.handle_collision(position_delta)
+
+            except Exception as e:
+
+                print(e)
+                print("Set deltas to 0, but please check traffic flow for unrealistic behavior...")
+
+                position_delta, speed_delta = 0, 0
+
             assert position_delta >= 0, "Vehicle collision detected"
+
+            # prevent division by zero;
+
+            position_delta = max(position_delta, POSITION_DELTA_EPS)
 
             acc_info = IDM.compute_acceleration(mv.accel_max,
                                                     mv.accel_pref,
@@ -107,6 +185,12 @@ class MicroLane(BaseLane):
             self.next_vehicle_position.append(next_position)
             self.next_vehicle_speed.append(next_speed)
 
+    def handle_collision(self, position_delta: float):
+
+        if position_delta < 0:
+
+            raise ValueError("Collision detected, position delta = {:.2f}".format(position_delta))
+            
 
     def compute_state_delta(self, id):
         
@@ -216,88 +300,23 @@ class MicroLane(BaseLane):
 
             return self.length
 
-    def random_vehicle(self):
-        
-        '''
-        Generate a vehicle with randomly chosen attributes, which depend on this lane's speed limit.
-        '''
-
-        speed_limit = self.speed_limit
-
-        # vehicle length;
-        # @TODO: apply dynamic sizes;
-
-        vehicle_length = 5.0
-
-        # maximum acceleration;
-
-        a_max = np.random.rand()
-        a_max = np.interp(a_max, [0, 1], [speed_limit * 1.5, speed_limit * 2.0])
-
-        # preferred acceleration;
-        
-        a_pref = np.random.rand()
-        a_pref = np.interp(a_pref, [0, 1], [speed_limit * 1.0, speed_limit * 1.5])
-
-        # target speed;
-        
-        target_speed = np.random.rand()
-        target_speed = np.interp(target_speed, [0, 1], [speed_limit * 0.8, speed_limit * 1.2])
-        
-        # min space ahead;
-        
-        min_space = np.random.rand()
-        min_space = np.interp(min_space, [0, 1], [vehicle_length * 0.2, vehicle_length * 0.4])
-
-        # preferred time to go;
-        
-        time_pref = np.random.rand()
-        time_pref = np.interp(time_pref, [0, 1], [0.2, 0.6])
-
-        return MicroVehicle(0, 0, a_max, a_pref, target_speed, min_space, time_pref, vehicle_length, vehicle_length)
-
-    def occupied_length(self):
+    def on_this_lane(self, position: float, differentiable: bool):
 
         '''
-        Compute length of occupied regions by vehicles.
+        Return True (1.0) if [position] is in between 0 and this lane's length.
         '''
 
-        ol = 0
+        if not isinstance(position, th.Tensor):
 
-        for mv in self.curr_vehicle:
+            position = th.tensor(position)
 
-            ol += mv.length
+        if differentiable:
 
-        # clip length to this lane's length;
+            return sigmoid(position, constant=16.0) * sigmoid(self.length - position, constant=16.0)
 
-        ol = min(ol, self.length)
+        else:
 
-        return ol
-
-
-    def avg_density(self):
-
-        '''
-        Compute average density of this lane by dividing occupied lane length by entire length.
-        '''
-
-        return self.occupied_length() / self.length
-
-    def avg_speed(self):
-
-        '''
-        Compute average speed of every vehicle. If there is no vehicle, return speed limit.
-        '''
-
-        avg = 0
-
-        for mv in self.curr_vehicle:
-
-            avg += mv.speed
-
-        avg = avg / max(len(self.curr_vehicle), 1)
-
-        return avg
+            return float(position >= 0 and position <= self.length)
 
     def clear(self):
 

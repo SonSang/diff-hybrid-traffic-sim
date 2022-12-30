@@ -97,13 +97,13 @@ class Trainer:
 
             for episode in range(num_episode):
 
-                total_reward += self.run_episode()
+                total_reward += self.run_episode(False)[0]
 
         avg_reward = total_reward / num_episode
 
         with open(log_path + "/eval.txt", 'a') as f:
 
-            f.write("{:.2f} \n".format(avg_reward))
+            f.write("{:.3f} \n".format(avg_reward))
 
         if avg_reward > self.best_eval_result:
 
@@ -121,23 +121,31 @@ class Trainer:
 
         for episode in range(num_episode):
 
-            total_reward = total_reward + self.run_episode()
+            curr_reward, action, simulator = self.run_episode(True)
+
+            total_reward = total_reward + curr_reward
 
             # epoch_tqdm.set_description("Train Epoch {}: Avg Reward = {:.2f}".format(epoch, total_reward / (episode + 1)))
+
+        action.retain_grad()
 
         loss = -total_reward
 
         self.optimizer.zero_grad()
         loss.backward()
+
+        print(action.grad)
         self.optimizer.step()
 
-    def run_episode(self):
+    def run_episode(self, differentiable: bool):
 
         episode_reward = 0
 
         tenv = deepcopy(self.env)
 
         obs = tenv.reset()
+
+        # print(obs)
 
         while True:
 
@@ -150,9 +158,9 @@ class Trainer:
 
                 action = low + (high - low) * th.sigmoid(action)
 
-            # print(action)
+            print(action)
                 
-            obs, reward, terminal, _ = tenv.step(action)
+            obs, reward, terminal, _ = tenv.step(action, differentiable)
 
             episode_reward = episode_reward + reward
 
@@ -162,7 +170,9 @@ class Trainer:
 
         # self.env.reset()
 
-        return episode_reward
+        print(episode_reward)
+
+        return episode_reward, action, tenv.simulator
 
 
     def save(self, path: str):

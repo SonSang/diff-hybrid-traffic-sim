@@ -1,3 +1,5 @@
+DEFAULT_VEHICLE_LENGTH = 5.0
+
 class Vehicle:
     '''
     Basic vehicle that is used in traffic simulation.
@@ -7,8 +9,9 @@ class Vehicle:
      3. length: Length of the vehicle
      4. a: Ancillary variable for gradient flow
     '''
-    def __init__(self, position, speed, length, a):
+    def __init__(self, id, position, speed, length, a):
 
+        self.id = id
         self.position = position
         self.speed = speed
         self.length = length

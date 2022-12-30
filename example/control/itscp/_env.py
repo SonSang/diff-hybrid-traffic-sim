@@ -1,6 +1,5 @@
-from math import exp
 from highway_env.envs.common.abstract import AbstractEnv
-from highway_env.road.road import Road, RoadNetwork
+from highway_env.road.road import RoadNetwork
 from highway_env.road.lane import StraightLane, AbstractLane, LineType
 from highway_env.road.regulation import RegulatedRoad
 from typing import Optional, Dict, List
@@ -12,13 +11,14 @@ from gym import spaces
 from example.common._comp_lane import CompLane
 from example.control.itscp._env_config import default_config
 from example.control.itscp._viewer import IntersectionViewer
+from example.control.itscp._simulator import ItscpRoadNetwork as SimRoadNetwork
 
-from road.road_network import RoadNetwork as SimRoadNetwork
 from road.lane._base_lane import BaseLane
-from road.callback import default_bdry_callback
-from road.lane.dmacro_lane import dMacroLane
-from road.lane.dmicro_lane import dMicroLane
-from model.macro._arz import ARZ
+from road.network.route import MacroRoute
+from road.lane.dmacro_lane import dMacroLane, MacroLane
+from road.lane.dmicro_lane import dMicroLane, MicroLane
+
+from dmath.operation import sigmoid
 
 class LaneID:
 
@@ -108,10 +108,15 @@ class ItscpEnv(AbstractEnv):
         self.lane: Dict[LaneID, CompLane] = {}
         self.schedule: Dict[LaneID, List[float]] = {}
 
+        # schedule of routes;
+
+        self.macro_route_schedule: List[MacroRoute] = []
+
         # inner structure needed for computing rewards;
 
         self.queue_length: Dict[LaneID, List] = {}
         self.flux: Dict[LaneID, List] = {}
+        self.avg_speed: List = []
 
         super().__init__()
 
@@ -140,6 +145,12 @@ class ItscpEnv(AbstractEnv):
 
     def _reset(self) -> None:
 
+        # set np random seed;
+
+        if self.config["random_seed"] > 0:
+
+            np.random.seed(self.config["random_seed"])
+
         self.num_intersection = self.config["num_intersection"]
         self.num_lane = self.config['num_lane']
         self.num_timestep = self.config["policy_length"] * self.config["duration"] * self.config["simulation_frequency"]
@@ -150,7 +161,7 @@ class ItscpEnv(AbstractEnv):
 
         self.schedule = self.schedule_callback(list(self.lane.keys()), self.num_timestep)
 
-        # Define spaces
+        # define spaces;
 
         self.observation_space = spaces.Box(shape=(self.config['num_schedule_obs'] * len(self.lane),), low=0, high=1, dtype=np.float32)
         self.action_space = spaces.Box(
@@ -161,12 +172,47 @@ class ItscpEnv(AbstractEnv):
         self.time = self.steps = 0
         self.done = False
 
-        # Constants for reward
+        # constants for reward;
 
-        self.reward_queue_c = -1.0          # Queue length constant
-        self.reward_flux_c = 1.0            # Flux constant
+        self.reward_queue_c = -1.0          # queue length constant;
+        self.reward_flux_c = 1.0            # flux constant;
+
+        # initialize macro route schedule randomly;
+
+        self._make_macro_route()
+
+        # initialize micro vehicles that would be generated;
+
+        self._make_micro_route()
 
         return self.observe()
+
+    def _make_macro_route(self):
+
+        self.macro_route_schedule.clear()
+
+        for _ in range(self.num_timestep):
+
+            self.macro_route_schedule.append(self.simulator.create_random_macro_route())
+
+    def _make_micro_route(self):
+
+        self.simulator.lane_waiting_micro_vehicle.clear()
+        self.simulator.lane_waiting_micro_route.clear()
+
+        max_num_micro_vehicle_per_lane = self.config['max_num_micro_vehicle_per_lane']
+
+        for lane_id in self.simulator.lane.keys():
+
+            self.simulator.lane_waiting_micro_vehicle[lane_id] = []
+            self.simulator.lane_waiting_micro_route[lane_id] = []
+
+            for _ in range(max_num_micro_vehicle_per_lane):
+
+                nv, nr = self.simulator.create_default_vehicle_with_random_route(lane_id)
+
+                self.simulator.lane_waiting_micro_vehicle[lane_id].append(nv)
+                self.simulator.lane_waiting_micro_route[lane_id].append(nr)
     
     def _make_road(self) -> None:
 
@@ -433,7 +479,8 @@ class ItscpEnv(AbstractEnv):
 
         elif self.config['mode'] == 'micro':
 
-            sim_lane = dMicroLane(len(self.simulator.lane), lane_length, speed_limit)
+            # sim_lane = dMicroLane(len(self.simulator.lane), lane_length, speed_limit)
+            sim_lane = MicroLane(len(self.simulator.lane), lane_length, speed_limit)
 
         elif self.config['mode'] == 'hybrid':
 
@@ -446,7 +493,7 @@ class ItscpEnv(AbstractEnv):
 
                 sim_lane = dMicroLane(len(self.simulator.lane), lane_length, speed_limit)
 
-        self.simulator.add_lane(sim_lane.id, sim_lane)
+        self.simulator.add_lane(sim_lane)
 
         # comp lane;
 
@@ -477,28 +524,36 @@ class ItscpEnv(AbstractEnv):
 
         for lane_id in self.lane.keys():
 
+            sim_lane = self.lane[lane_id].sim_lane
+
             sc = self.schedule[lane_id]
             t = len(sc) // num_schedule_obs
 
             for k in range(num_schedule_obs):
 
-                t0 = int(t * k)
-                t1 = int(t * k + t)
-                
-                if t1 > len(sc):
-                    t1 = len(sc)
-                
-                rho_sum = 0
+                if len(sim_lane.prev_lane) == 0:
 
-                for p in range(t0, t1):
-                    rho_sum += sc[p]
+                    t0 = int(t * k)
+                    t1 = int(t * k + t)
+                    
+                    if t1 > len(sc):
+                        t1 = len(sc)
+                    
+                    rho_sum = 0
+
+                    for p in range(t0, t1):
+                        rho_sum += sc[p]
+                    
+                    rho_sum /= (t1 - t0)
+                    obs.append(rho_sum)
                 
-                rho_sum /= (t1 - t0)
-                obs.append(rho_sum)
+                else:
+
+                    obs.append(0)
 
         return np.array(obs).astype(self.observation_space.dtype)
 
-    def step(self, action):
+    def step(self, action, differentiable: bool):
 
         """
         Perform an action and step the environment dynamics.
@@ -509,8 +564,9 @@ class ItscpEnv(AbstractEnv):
 
         self.queue_length.clear()
         self.flux.clear()
+        self.avg_speed.clear()
 
-        self._simulate(action)
+        self._simulate(action, differentiable)
 
         obs = self.observe()
         reward = self._reward(action)
@@ -522,7 +578,37 @@ class ItscpEnv(AbstractEnv):
         
         return obs, reward, terminal, info
 
-    def _simulate_step(self, action):
+    def _is_static_speed(self, speed: float, differentiable: bool):
+
+        '''
+        Return True (1.0) if the given speed is a static speed, else False (0.0).
+        '''
+
+        static_speed = self.config['static_speed']
+
+        if not isinstance(speed, th.Tensor):
+
+            speed = th.tensor(speed)
+
+        if differentiable:
+
+            # apply differentiable operation;
+
+            is_static = sigmoid(static_speed - speed, constant=16)
+
+        else:
+
+            if speed < static_speed:
+
+                is_static = 1.0
+
+            else:
+
+                is_static = 0.0
+
+        return is_static
+
+    def _simulate_step(self, action, differentiable: bool):
 
         '''
         Take single simulation step.
@@ -534,43 +620,32 @@ class ItscpEnv(AbstractEnv):
 
         for lane_id in self.lane.keys():
 
+            sim_lane: BaseLane = self.lane[lane_id].sim_lane
+
             # schedule;
 
             incoming = -1
 
-            if lane_id.row == 0 or lane_id.row == self.num_intersection - 1 or \
-                lane_id.col == 0 or lane_id.col == self.num_intersection - 1:
+            if len(sim_lane.prev_lane) == 0:
 
                 schedule = self.schedule[lane_id]
                 incoming = schedule[curr_frame]
 
             # signal;
 
-            signal_info = self.is_green_light(lane_id, action, curr_frame)
+            signal_info = self.lane_signal_info(lane_id, action, curr_frame, differentiable)
 
-            sim_lane: BaseLane = self.lane[lane_id].sim_lane
+            self.simulator.lane_signal[sim_lane.id] = signal_info[1]
+            self.simulator.lane_incoming[sim_lane.id] = incoming
 
-            if isinstance(sim_lane, dMacroLane):
+        # set macro route;
 
-                sim_lane.bdry_callback = ItscpEnv.macro_bdry_callback
-
-            elif isinstance(sim_lane, dMicroLane):
-
-                sim_lane.bdry_callback = ItscpEnv.micro_bdry_callback
-
-            else:
-
-                raise ValueError()
-
-            sim_lane.bdry_callback_args = {'lane': sim_lane,
-                                            'signal_info': signal_info,
-                                            'incoming': incoming, 
-                                            'id': lane_id}
+        self.simulator.macro_route = self.macro_route_schedule[curr_frame]
 
         # take simulation step;
 
         dt = 1.0 / self.config["simulation_frequency"]
-        self.simulator.forward(dt)
+        self.simulator.forward(dt, differentiable)
         self.time += 1
 
         # append obs;
@@ -593,47 +668,54 @@ class ItscpEnv(AbstractEnv):
 
             lane_queue_length = 0
 
-            if isinstance(sim_lane, dMacroLane):
+            if isinstance(sim_lane, MacroLane):
 
-                for cell in sim_lane.curr_cell:
+                for c in sim_lane.curr_cell:
 
-                    rho = cell.state.q.r
-                    qlen = sim_lane.cell_length * rho
-                    speed = cell.state.u
+                    density = c.state.q.r
 
-                    if speed < static_speed:
+                    num_vehicle = density * sim_lane.cell_length / self.simulator.vehicle_length
 
-                        is_static = 1.0
+                    speed = c.state.u
 
-                    else:
+                    is_static = self._is_static_speed(speed, differentiable)
 
-                        is_static = 0.0
+                    lane_queue_length = lane_queue_length + (is_static * num_vehicle)
 
-                    if isinstance(speed, th.Tensor):
-
-                        is_static = is_static + speed.detach() - speed
-
-                    lane_queue_length = lane_queue_length + is_static * qlen
-
-            elif isinstance(sim_lane, dMicroLane):
+            elif isinstance(sim_lane, MicroLane):
 
                 for v in sim_lane.curr_vehicle:
 
                     speed = v.speed
 
-                    if speed < static_speed:
+                    if not isinstance(speed, th.Tensor):
 
-                        is_static = 1.0
+                        speed = th.tensor(speed)
+
+                    if differentiable:
+
+                        # apply differentiable operation;
+
+                        is_static = sigmoid(static_speed - speed, constant=32.0)
 
                     else:
 
-                        is_static = 0.0
+                        if speed < static_speed:
 
-                    if isinstance(speed, th.Tensor):
+                            is_static = 1.0
 
-                        is_static = is_static + speed.detach() - speed
+                        else:
 
-                    lane_queue_length = lane_queue_length + is_static * v.length
+                            is_static = 0.0
+
+                    lane_queue_length = lane_queue_length + is_static # * v.length
+
+                # also consider waiting vehicles out of scene;
+
+                # if len(sim_lane.prev_lane) == 0:
+
+                #     lane_queue_length += self.simulator.lane_micro_max_counter[sim_lane.id] - \
+                #                             self.simulator.lane_micro_counter[sim_lane.id]
 
             else:
 
@@ -645,53 +727,17 @@ class ItscpEnv(AbstractEnv):
 
             self.queue_length[lane_id].append(lane_queue_length)
 
-            # flux;
+        if self.config["render"]:
 
-            lane_flux = 0
-            
-            if lane_id.approaching:
+            self.render(action)
 
-                if isinstance(sim_lane, dMacroLane):
-
-                    flux = sim_lane.curr_cell[-1].state.flux_r() 
-
-                    lane_flux = lane_flux + flux * sim_lane.cell_length * dt
-
-                elif isinstance(sim_lane, dMicroLane):
-
-                    if len(sim_lane.curr_vehicle):
-
-                        hv = sim_lane.curr_vehicle[-1]
-
-                        tip = hv.position + hv.length * 0.5
-
-                        if tip >= sim_lane.length:
-
-                            going_out = 1.0
-
-                        else:
-
-                            going_out = 0.0
-                        
-                        if isinstance(hv.position, th.Tensor):
-
-                            going_out = going_out + hv.position - hv.position.detach()
-
-                        lane_flux = lane_flux + going_out * hv.length * hv.speed * dt
-
-                else:
-
-                    raise ValueError()
-                
-            self.flux[lane_id].append(lane_flux)
-
-    def _simulate(self, action):
+    def _simulate(self, action, differentiable: bool):
 
         self.time = 0
 
         for _ in range(self.num_timestep):
 
-            self._simulate_step(action)
+            self._simulate_step(action, differentiable)
 
     def _reward(self, action):
         """
@@ -710,9 +756,15 @@ class ItscpEnv(AbstractEnv):
 
                 reward = reward + self.reward_queue_c * x
 
-            for x in flux:
+            # for x in flux:
 
-                reward = reward + self.reward_flux_c * x
+            #     reward = reward + self.reward_flux_c * x
+
+        # for x in self.avg_speed:
+
+        #     reward = reward + x
+
+        # reward = reward / len(self.avg_speed)
 
         return reward
 
@@ -779,7 +831,7 @@ class ItscpEnv(AbstractEnv):
                 lane_id.approaching and \
                 lane_id.loc != 'mid':
 
-                _, _, green, _ = self.is_green_light(lane_id, action, self.time)
+                _, green = self.lane_signal_info(lane_id, action, self.time, False)
 
                 position = lane.env_lane.position(lane.env_lane.length, 3)
                 position = self.viewer.sim_surface.vec2pix(position)
@@ -802,16 +854,14 @@ class ItscpEnv(AbstractEnv):
     Signal functions.
     '''
 
-    def is_green_light(self, lane_id: LaneID, action, curr_frame):
+    def lane_signal_info(self, lane_id: LaneID, action, curr_frame, differentiable: bool):
 
         '''
         Return signal information for the given lane.
 
-        The signal consists of two boolean values, which is [prev_green] and [next_green].
-        [prev_green] indicates if the signal between the prev lane and this lane is green.
-        [next_green] indicates if the signal between this lane and the next lane is green.
-
-        It also returns the corresponding element in [action] that made such signal decisions.
+        The signal consists of two float values, which is [prev_signal] and [next_signal].
+        [prev_signal] is close to 1.0 if the signal between the prev lane and this lane is green, else close to 0.0.
+        [next_signal] is close to 1.0 if the signal between the next lane and this lane is green, else close to 0.0.
         '''
 
         num_signal_frame = self.config['simulation_frequency'] * self.config['signal_length']
@@ -824,255 +874,61 @@ class ItscpEnv(AbstractEnv):
 
         curr_action = curr_phase_action[lane_id.row * self.num_intersection + lane_id.col]
 
+        # turn [curr_action] into Tensor to use sigmoid function;
+
+        if not isinstance(curr_action, th.Tensor):
+
+            curr_action = th.tensor(curr_action)
+
         # current progress in this phase;
         # if it is smaller than [curr_action], WE light is on;
         # else, NS light is on;
 
         curr_phase_progress = min((curr_frame % num_signal_frame) / num_signal_frame, 1.0)
 
-
         if lane_id.loc == 'mid':
             
-            # if the lane is connecting lane in the intersection, [next_green] is always True;
+            # if the lane is connecting lane in the intersection, [next_signal] is always 1.0;
             
-            next_green = True
-            next_green_action = None
+            next_signal = 1.0
+            
+            # [prev_signal] is determined by signal;
+            # @TODO: the signal has to be that of [prev_lane], not itself;
 
-            # [prev_green] is determined by signal;
+            if lane_id.ploc == "west" or lane_id.ploc == "east":
 
-            if curr_phase_progress < curr_action:
-
-                prev_green = lane_id.ploc == "west" or lane_id.ploc == "east"
+                prev_signal = sigmoid(curr_action - curr_phase_progress, constant=16) if differentiable \
+                                else float(curr_action > curr_phase_progress)
 
             else:
 
-                prev_green = lane_id.ploc == "north" or lane_id.ploc == "south"
-
-            prev_green_action = curr_action
-
+                prev_signal = sigmoid(curr_phase_progress - curr_action, constant=16) if differentiable \
+                                else float(curr_phase_progress > curr_action)
+                
         else:
 
-            # if the lane is leaving lane, [prev_green] and [next_green] are always True;
+            # if the lane is leaving lane, [prev_signal] and [next_signal] are always 1.0;
 
             if not lane_id.approaching:
                     
-                next_green = True
-                next_green_action = None
+                next_signal = 1.0
+                prev_signal = 1.0
 
-                prev_green = True
-                prev_green_action = None
-
-            # if the lane is approaching lane, [prev_green] is always True;
-            # [next_green] is determined by signal;
+            # if the lane is approaching lane, [prev_signal] is always True;
+            # [next_signal] is determined by signal;
 
             else:
 
-                prev_green = True
-                prev_green_action = None
+                prev_signal = 1.0
 
-                if curr_phase_progress < curr_action:
+                if lane_id.loc == "west" or lane_id.loc == "east":
 
-                    next_green = lane_id.loc == "west" or lane_id.loc == "east"
-
-                else:
-
-                    next_green = lane_id.loc == "north" or lane_id.loc == "south"
-
-                next_green_action = curr_action
-
-        return prev_green, prev_green_action, next_green, next_green_action
-
-    @staticmethod
-    def macro_bdry_callback(args: Dict):
-
-        '''
-        Bdry function for macro lane when using traffic signals.
-
-        If it is green signal, it works same as default bdry function.
-        Else, we assume that the next lane is blocked for approaching lanes.
-        We assume the prev lane is blocked for middle lanes.
-        '''
-
-        lane: dMacroLane = args['lane']
-        signal_info = args['signal_info']
-        incoming = args['incoming']
-        id: LaneID = args['id']
-
-        default_bdry_callback(args)
-
-        (prev_green, prev_action, next_green, next_action) = signal_info
-
-        if id.loc == 'mid':
-
-            # if this lane is 'mid', left cell is determined by signal;
-
-            green_density = lane.leftmost_cell.state.q.r
-            green_speed = lane.leftmost_cell.state.u
-
-            red_density = 0.0
-            red_speed = lane.speed_limit
-
-            if prev_green:
-
-                leftmost_density = green_density
-                leftmost_speed = green_speed
-
-            else:
-
-                leftmost_density = red_density
-                leftmost_speed = red_speed
-
-            # differentiable [action];
-
-            if isinstance(prev_action, th.Tensor):
-
-                if id.ploc == "west" or id.ploc == "east":
-
-                    # if WE-dir, when [action] decreases, it becomes closer to [red];
-
-                    leftmost_density = leftmost_density + (green_density - red_density) * (prev_action - prev_action.detach())
-                    leftmost_speed = leftmost_speed + (green_speed - red_speed) * (prev_action - prev_action.detach())
+                    next_signal = sigmoid(curr_action - curr_phase_progress, constant=16) if differentiable \
+                                else float(curr_action > curr_phase_progress)
 
                 else:
 
-                    # else, when [action] increases, it becomes closer to [red];
+                    next_signal = sigmoid(curr_phase_progress - curr_action, constant=16) if differentiable \
+                                else float(curr_phase_progress > curr_action)
 
-                    leftmost_density = leftmost_density + (green_density - red_density) * (prev_action.detach() - prev_action)
-                    leftmost_speed = leftmost_speed + (green_speed - red_speed) * (prev_action.detach() - prev_action)
-
-            lane.set_leftmost_cell(leftmost_density, leftmost_speed)
-
-        else:
-
-            if id.approaching:
-
-                # if there is incoming, set leftmost cell;
-
-                if incoming >= 0:
-
-                    r = incoming
-                    u = ARZ.compute_u(r, 0, lane.speed_limit)
-                    lane.set_leftmost_cell(r, u)
-
-                # right;
-
-                green_density = lane.rightmost_cell.state.q.r
-                green_speed = lane.rightmost_cell.state.u
-
-                red_density = 1.0
-                red_speed = 0.0
-
-                if next_green:
-
-                    rightmost_density = green_density
-                    rightmost_speed = green_speed
-
-                else:
-
-                    rightmost_density = red_density
-                    rightmost_speed = red_speed
-
-                # differentiable [action];
-
-                if isinstance(next_action, th.Tensor):
-
-                    if id.loc == "west" or id.loc == "east":
-
-                        # if WE-dir, when [action] decreases, it becomes closer to [red];
-
-                        rightmost_density = rightmost_density + (green_density - red_density) * (next_action - next_action.detach())
-                        rightmost_speed = rightmost_speed + (green_speed - red_speed) * (next_action - next_action.detach())
-
-                    else:
-
-                        # else, when [action] increases, it becomes closer to [red];
-
-                        rightmost_density = rightmost_density + (green_density - red_density) * (next_action.detach() - next_action)
-                        rightmost_speed = rightmost_speed + (green_speed - red_speed) * (next_action.detach() - next_action)
-
-                lane.set_rightmost_cell(rightmost_density, rightmost_speed)
-
-
-    @staticmethod
-    def micro_bdry_callback(args: Dict):
-
-        '''
-        Bdry function for micro lane when using traffic signals.
-
-        If it is green signal, it works same as default bdry function.
-        Else, we assume that the next lane is blocked.
-
-        New vehicle is generated at the chance of [incoming].
-        '''
-
-        lane: dMicroLane = args['lane']
-        signal_info = args['signal_info']
-        incoming = args['incoming']
-        id: LaneID = args['id']
-
-        default_bdry_callback(args)
-
-        # left: generate new vehicle if needed;
-
-        if len(lane.prev_lane) == 0:
-
-            nv = lane.random_vehicle()
-
-            enough_space = lane.entering_free_space() > nv.length * 0.5
-
-            if enough_space:
-
-                rand = np.random.random((1,)).item()
-
-                if rand < incoming:
-
-                    nv.position = 0
-                    nv.speed = 0
-
-                    lane.add_tail_vehicle(nv)
-
-        # right;
-
-        if len(lane.curr_vehicle) == 0:
-
-            return
-
-        v = lane.curr_vehicle[-1]
-
-        (prev_green, prev_action, next_green, next_action) = signal_info
-
-        green_position_delta = lane.head_position_delta
-        green_speed_delta = lane.head_speed_delta
-
-        red_position_delta = max((lane.length - v.position) - (v.length * 0.5), 0)
-        red_speed_delta = v.speed
-
-        if next_green:
-
-            lane.head_position_delta = green_position_delta
-            lane.head_speed_delta = green_speed_delta
-
-        else:
-
-            lane.head_position_delta = red_position_delta
-            lane.head_speed_delta = red_speed_delta
-
-        # differentiable [action];
-
-        if id.loc != 'mid' and id.approaching:
-
-            if isinstance(next_action, th.Tensor):
-
-                if id.loc == "west" or id.loc == "east":
-
-                    # if WE-dir, when [action] decreases, it becomes closer to [red];
-
-                    lane.head_position_delta = lane.head_position_delta + (green_position_delta - red_position_delta) * (next_action - next_action.detach())
-                    lane.head_speed_delta = lane.head_speed_delta + (green_speed_delta - red_speed_delta) * (next_action - next_action.detach())
-
-                else:
-
-                    # else, when [action] increases, it becomes closer to [red];
-
-                    lane.head_position_delta = lane.head_position_delta + (green_position_delta - red_position_delta) * (next_action.detach() - next_action)
-                    lane.head_speed_delta = lane.head_speed_delta + (green_speed_delta - red_speed_delta) * (next_action.detach() - next_action)
+        return prev_signal, next_signal

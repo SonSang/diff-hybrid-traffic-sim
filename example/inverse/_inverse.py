@@ -10,7 +10,7 @@ import scipy.optimize
 import matplotlib.pyplot as plt
 from copy import deepcopy
 
-from road.road_network import RoadNetwork
+from road.network.road_network import RoadNetwork
 
 class InverseProblem:
     

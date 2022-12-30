@@ -20,10 +20,12 @@ class Controller(th.nn.Module):
         layer = []
 
         layer.append(th.nn.Linear(input_size, network_size[0]))
+        layer.append(th.nn.Tanh())
 
         for i in range(num_layer - 1):
 
             layer.append(th.nn.Linear(network_size[i], network_size[i + 1]))
+            layer.append(th.nn.Tanh())
 
         layer.append(th.nn.Linear(network_size[-1], output_size))
 

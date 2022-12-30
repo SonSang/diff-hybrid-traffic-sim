@@ -66,8 +66,20 @@ default_config = {
 
     "num_schedule_obs": 10,
 
+    # maximum number of micro vehicles generated per lane in [micro] mode;
+
+    "max_num_micro_vehicle_per_lane": 10,
+
     # simulation mode, can be [macro], [micro], or [hybrid];
 
     "mode": "hybrid",   # "macro"
+
+    # render;
+
+    "render": False,
+
+    # random seed, use it if it is larger than 0;
+
+    "random_seed": 0,
 
 }

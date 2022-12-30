@@ -15,20 +15,10 @@ class BaseLane:
         self.next_lane: Dict[int, BaseLane] = {}
         self.prev_lane: Dict[int, BaseLane] = {}
 
-        # since multiple lanes could be next and prev lane, we should select
-        # only one of them for current timestep;
-
-        self.curr_next_lane: int = -1
-        self.curr_prev_lane: int = -1
+        # properties;
         
         self.length = length
         self.speed_limit = speed_limit
-
-        # since lanes are finite, they should have boundaries at their ends;
-        # callback function can be used to set these boundaries for each lane;
-
-        self.bdry_callback: Callable = None
-        self.bdry_callback_args: Dict = {}
 
     def is_macro(self):
         raise NotImplementedError()
@@ -47,6 +37,18 @@ class BaseLane:
 
     def add_next_lane(self, lane):
         self.next_lane[lane.id] = lane
+
+    def has_prev_lane(self):
+        return self.num_prev_lane() > 0
+
+    def has_next_lane(self):
+        return self.num_next_lane() > 0
+
+    def num_prev_lane(self):
+        return len(self.prev_lane)
+
+    def num_next_lane(self):
+        return len(self.next_lane)
 
     def clear(self):
         raise NotImplementedError()

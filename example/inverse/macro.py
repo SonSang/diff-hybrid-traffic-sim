@@ -10,7 +10,7 @@ import time
 import torch as th
 
 from example.inverse._inverse import InverseProblem
-from road.road_network import RoadNetwork
+from road.network.road_network import RoadNetwork
 from road.lane.dmacro_lane import dMacroLane
 
 class MacroInverseProblem(InverseProblem):
