@@ -3,6 +3,7 @@ import torch as th
 from road.lane._macro_lane import MacroLane
 from road.lane._micro_lane import MicroLane, MicroVehicle
 from road.network.route import MicroRoute
+from model.macro._arz import ARZ
 
 class Conversion:
 
@@ -28,9 +29,9 @@ class Conversion:
 
         # add flux to flux capacitor for the next lane;
 
-        flux = prev_lane.curr_cell[-1].state.q.r * prev_lane.curr_cell[-1].state.u * delta_time
+        flux_inc = prev_lane.curr_cell[-1].state.q.r * prev_lane.curr_cell[-1].state.u * delta_time
 
-        prev_lane.add_flux_capacitor(next_lane.id, flux)
+        prev_lane.add_flux_capacitor(next_lane.id, flux_inc)
 
         # check flux and generate new vehicle;
 
@@ -38,22 +39,33 @@ class Conversion:
 
         if isinstance(flux, th.Tensor):
 
+            tflux = flux.clone()
             flux = flux.item()
+            
+        else:
+            
+            tflux = flux
 
         # if flux is accumulated enough and there is free space in the next lane, create a new vehicle;
 
         nv = MicroVehicle.default_micro_vehicle(next_lane.speed_limit)
 
-        if flux >= nv.length and next_lane.entering_free_space() >= (nv.length * 0.5):
+        # bigger entering free space (from 0.5 to 1.0) to prevent emergence break if possible;
+        
+        if flux >= nv.length and next_lane.entering_free_space() >= (nv.length * 1.0):
 
             # use ancilliary variable [a] to let gradient flow;
             # [a] gets same value as the length of the new vehicle;
 
             nv.position = 0
             nv.speed = prev_lane.curr_cell[-1].state.u
-            nv.a = prev_lane.flux_capacitor[next_lane.id] - (flux - nv.length)
+            nv.a = tflux - (flux - nv.length)
 
-            prev_lane.flux_capacitor[next_lane.id] -= nv.length
+            # detach flux;
+            if isinstance(tflux, th.Tensor):
+                prev_lane.flux_capacitor[next_lane.id] = th.tensor(tflux.detach().cpu().item() - nv.length, dtype=tflux.dtype, device=tflux.device)
+            else:
+                prev_lane.flux_capacitor[next_lane.id] = tflux - nv.length
 
             # update network;
 
@@ -84,7 +96,7 @@ class Conversion:
 
             assert next_lane.is_macro(), ""
 
-            if hv.position >= prev_lane.length:
+            if hv.position > prev_lane.length + (1.0 * hv.length):
 
                 # remove from current lane;
 
@@ -101,40 +113,62 @@ class Conversion:
                 if isinstance(d_head_length, th.Tensor):
                     
                     d_head_length = d_head_length.item()
+                    
+                v_head = hv.position - prev_lane.length # + (0.5 * hv.length)
+                v_tail = v_head - hv.length
 
                 # cell variables;
 
-                p_r = next_lane.curr_cell[0].state.q.r
-                p_u = next_lane.curr_cell[0].state.u
-                
                 next_cell_length = next_lane.cell_length
-
-                overlap_size = th.clamp(hv.position - prev_lane.length + head_length * 0.5, max=next_cell_length)
-                add_r = (head_a / d_head_length) * (overlap_size / next_cell_length)
-                n_r = p_r + add_r
-
-                # differentiable clamp;
-
-                d_n_r = n_r
                 
-                if isinstance(d_n_r, th.Tensor):
-                
-                    d_n_r = d_n_r.item()
-
-                if n_r > 1.0 - 1e-5:
+                for ci in range(len(next_lane.curr_cell)):
                     
-                    n_r = n_r - (d_n_r - (1.0 - 1e-5))
-                
-                elif n_r < 1e-5:
-                
-                    n_r = n_r - (d_n_r - 1e-5)
+                    p_r = next_lane.curr_cell[ci].state.q.r
+                    p_u = next_lane.curr_cell[ci].state.u
+                    
+                    c_head = next_lane.curr_cell[ci].end
+                    c_tail = next_lane.curr_cell[ci].start
+                    
+                    if c_head > v_tail and c_tail < v_head:
 
-                # update lane;
+                        max_head = c_head if c_head > v_head else v_head
+                        min_tail = c_tail if c_tail < v_tail else v_tail
+                        
+                        overlap_size = next_cell_length + head_length - (max_head - min_tail)
+                        add_r = (head_a / d_head_length) * (overlap_size / next_cell_length)
+                        n_r = p_r + add_r
 
-                next_lane.curr_cell[0].state.q.r = n_r
-                next_lane.curr_cell[0].state.u = \
-                    ((next_cell_length * p_r * p_u) + (overlap_size * hv.speed)) / \
-                    (next_cell_length * p_r + overlap_size)
+                        # differentiable clamp;
+
+                        d_n_r = n_r
+                        
+                        if isinstance(d_n_r, th.Tensor):
+                        
+                            d_n_r = d_n_r.item()
+
+                        if n_r > 1.0 - 1e-5:
+                            
+                            n_r = n_r - (d_n_r - (1.0 - 1e-5))
+                        
+                        elif n_r < 1e-5:
+                        
+                            n_r = n_r - (d_n_r - 1e-5)
+
+                        # update lane;
+
+                        next_lane.curr_cell[ci].state.q.r = n_r
+                        next_lane.curr_cell[ci].state.u = hv.speed
+                            # \
+                            # ((next_cell_length * p_r * p_u) + (overlap_size * hv.speed)) / \
+                            # (next_cell_length * p_r + overlap_size)
+                        next_lane.curr_cell[ci].state.q.y = \
+                            ARZ.compute_y(next_lane.curr_cell[ci].state.q.r, 
+                                        next_lane.curr_cell[ci].state.u, 
+                                        next_lane.speed_limit)
+                            
+                    else:
+                        
+                        break
 
 
     @staticmethod

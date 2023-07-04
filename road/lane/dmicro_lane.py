@@ -217,6 +217,12 @@ class dMicroLane(MicroLane):
             nv.speed = nv.speed.item()
 
         return nv
+    
+    def clear(self):
+        
+        super().clear()
+        
+        self.b_curr_vehicle.clear()
             
 
 class dMicroForwardLayer(th.autograd.Function):

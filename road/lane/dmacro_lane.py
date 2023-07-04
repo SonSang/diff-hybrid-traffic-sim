@@ -224,7 +224,12 @@ class dMacroLane(MacroLane):
             nc.state.q.y = nc.state.q.y.item()
 
         return nc
-
+    
+    def clear(self):
+        
+        super().clear()
+        
+        self.b_curr_cell.clear()
         
 class dMacroForwardLayer(th.autograd.Function):
 

@@ -300,26 +300,52 @@ class RoadNetwork:
 
         '''
         Get boundary values for given macro lane.
+        
+        If the given macro lane has...
+        1. Multiple adj lanes: Use adj lane specified in [self.macro_route].
+        2. Single adj lane: Use it.
+        3. No adj lane: Use the lane's leftmost or rightmost cell.
         '''
-
+        
+        lane: MacroLane = self.lane[id]
+        
         if left:
-
-            adj_lane_id = self.macro_route.get_prev_lane(id)
-
+            bdry_cell = lane.get_leftmost_cell()
         else:
-
-            adj_lane_id = self.macro_route.get_next_lane(id)
-
-        # assume empty cell if there is no adjacent lane;
-
-        if adj_lane_id == -1:
-
-            return 0, self.speed_limit
-
+            bdry_cell = lane.get_rightmost_cell()
+            
+        return bdry_cell.state.q.r, bdry_cell.state.u
+        
+        if left:
+            num_adj_lane = lane.num_prev_lane()
         else:
-
-            adj_lane = self.lane[adj_lane_id]
-
+            num_adj_lane = lane.num_next_lane()
+        
+        if num_adj_lane == 0:
+            
+            if left:
+                bdry_cell = lane.get_leftmost_cell()
+            else:
+                bdry_cell = lane.get_rightmost_cell()
+                
+            return bdry_cell.state.q.r, bdry_cell.state.u
+        
+        else:
+            
+            if num_adj_lane == 1:
+                
+                if left:
+                    adj_lane = lane.prev_lane[list(lane.prev_lane.keys())[0]]
+                else:
+                    adj_lane = lane.next_lane[list(lane.next_lane.keys())[0]]
+                    
+            else:
+                
+                if left:
+                    adj_lane = self.macro_route.get_prev_lane(id)
+                else:
+                    adj_lane = self.macro_route.get_next_lane(id)
+                    
             if adj_lane.is_macro():
 
                 ma_adj_lane: MacroLane = adj_lane
@@ -441,6 +467,11 @@ class RoadNetwork:
         assert lane.is_micro(), ""
 
         # if there is no vehicle, just set bdry as default;
+        
+        lane.head_position_delta = DEFAULT_HEAD_POSITION_DELTA
+        lane.head_speed_delta = DEFAULT_HEAD_SPEED_DELTA
+
+        return
 
         if lane.num_vehicle() == 0:
 

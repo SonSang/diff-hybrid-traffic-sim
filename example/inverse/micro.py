@@ -12,6 +12,8 @@ import torch as th
 from example.inverse._inverse import InverseProblem
 from road.network.road_network import RoadNetwork
 from road.lane.dmicro_lane import dMicroLane
+from road.vehicle.micro_vehicle import MicroVehicle
+from road.network.route import MicroRoute
 
 class MicroInverseProblem(InverseProblem):
 
@@ -39,33 +41,26 @@ class MicroInverseProblem(InverseProblem):
 
         lane_length = 1e10  # arbitrary large value;
 
-        num_vehicle = self.num_vehicle
         speed_limit = self.speed_limit
 
         # initialize position and speed of each vehicle randomly;
         
-        init_position, init_speed = self.random_state()
+        init_position, init_speed = self.random_initial_state()
 
         # create micro lane;
 
         lane = dMicroLane(0, lane_length, speed_limit)
-
-        # initialize lane;
-
-        for _ in range(num_vehicle):
-
-            mv = lane.random_vehicle()
-            lane.add_tail_vehicle(mv)
-
-        lane.set_state_vector(init_position, init_speed)
-
+        
         # create network;
 
         self.network = RoadNetwork(speed_limit)
-        self.network.add_lane(lane.id, lane)
+        self.network.add_lane(lane)
 
+        # initialize lane;
+        
+        self.set_initial_state((init_position, init_speed))
 
-    def random_state(self):
+    def random_initial_state(self):
 
         '''
         Get random state of the road network.
@@ -76,22 +71,50 @@ class MicroInverseProblem(InverseProblem):
         dtype = self.dtype
 
         speed_limit = th.tensor([self.speed_limit], dtype=dtype)
-
-        position_start = th.arange(0, num_vehicle) * 4.0 * vehicle_length
-        init_position = position_start + th.rand((num_vehicle,), dtype=dtype) * 2.0 * vehicle_length
         
-        init_speed = th.rand((num_vehicle,), dtype=dtype)
-        init_speed = th.lerp(0.3 * speed_limit, 0.7 * speed_limit, init_speed)
+        if self.beg_state is None:
+
+            position_start = th.arange(0, num_vehicle) * 4.0 * vehicle_length
+            init_position = position_start + th.rand((num_vehicle,), dtype=dtype) * 2.0 * vehicle_length
+            
+            init_speed = th.rand((num_vehicle,), dtype=dtype)
+            init_speed = th.lerp(0.3 * speed_limit, 0.7 * speed_limit, init_speed)
+            
+        else:
+            
+            init_position = self.beg_state[0] + th.randn((num_vehicle,), dtype=dtype) * 0.1 * vehicle_length
+            init_speed = self.beg_state[1] + th.randn((num_vehicle,), dtype=dtype) * 1e-2 * speed_limit
+            
+            lb, ub = self.bounds()
+            init_position = th.clamp(init_position, min=lb[0], max=ub[0])
+            init_speed = th.clamp(init_speed, min=lb[1], max=ub[1])
 
         return (init_position, init_speed)
 
-    def set_state(self, state):
+    def set_initial_state(self, state):
 
         '''
         Set state of the road network.
         '''
+        
+        self.network.vehicle.clear()
+        self.network.micro_route.clear()
 
         lane: dMicroLane = self.network.lane[0]
+        lane.clear()
+        
+        init_position = state[0]
+        init_speed = state[1]
+        
+        for i in range(self.num_vehicle):
+
+            mv = MicroVehicle.default_micro_vehicle(speed_limit)
+            mv.position = init_position[i]
+            mv.speed = init_speed[i]
+            
+            mr = MicroRoute([0])
+            self.network.add_vehicle(mv, mr)
+            
         lane.set_state_vector(state[0], state[1])
     
     def get_state(self):
@@ -103,6 +126,14 @@ class MicroInverseProblem(InverseProblem):
         lane: dMicroLane = self.network.lane[0]
 
         return lane.get_state_vector()
+    
+    def get_initial_state(self):
+        
+        return self.get_state()
+    
+    def get_target_state(self):
+        
+        return self.get_state()
 
     def tensorize(self, state, requires_grad: bool = True):
 
@@ -178,6 +209,14 @@ class MicroInverseProblem(InverseProblem):
         ub = (position_ub, speed_ub)
 
         return lb, ub
+    
+    def compute_beg_error(self, sa, sb):
+        
+        return self.compute_error(sa, sb)
+    
+    def compute_end_error(self, sa, sb):
+        
+        return self.compute_error(sa, sb)
 
     def compute_error(self, sa, sb):
 
@@ -198,13 +237,13 @@ class MicroInverseProblem(InverseProblem):
 
 if __name__ == "__main__":
 
-    parser = argparse.ArgumentParser("Script to solve inverse problem microscopic traffic simulation")
+    parser = argparse.ArgumentParser("Script to solve inverse problem in microscopic traffic simulation")
     parser.add_argument("--n_trial", type=int, default=5)
-    parser.add_argument("--n_vehicle", type=int, default=100)
-    parser.add_argument("--n_timestep", type=int, default=1000)
+    parser.add_argument("--n_vehicle", type=int, default=10)
+    parser.add_argument("--n_timestep", type=int, default=500)
     parser.add_argument("--vehicle_length", type=float, default=5.0)
     parser.add_argument("--speed_limit", type=float, default=30.0)
-    parser.add_argument("--delta_time", type=float, default=0.03)
+    parser.add_argument("--delta_time", type=float, default=0.01)
     parser.add_argument("--n_episode", type=int, default=100)
     args = parser.parse_args()
 
@@ -222,4 +261,5 @@ if __name__ == "__main__":
 
     run_name = "micro_{}".format(time.time())
     problem = MicroInverseProblem(num_trial, num_timestep, num_episode, delta_time, speed_limit, run_name, num_vehicle, vehicle_length)
+    problem.gd_lr = 1e-2
     problem.evaluate()

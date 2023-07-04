@@ -1,5 +1,5 @@
 GAMMA = 0.5
-EPSILON = 1e-3
+EPSILON = 1e-5
 
 class ARZ:
     
@@ -132,8 +132,10 @@ class ARZ:
 
     @staticmethod
     def compute_u_eq(r, u_max, gamma=GAMMA):
-        r = max(r, EPSILON)              # prevent divide by zero in backward
-        return u_max * (1.0 - pow(r, gamma))
+        # r = max(r, EPSILON)              # prevent divide by zero in backward
+        # return u_max * (1.0 - pow(r, gamma))
+        r = max(r, 0.)
+        return u_max * (1. - pow(r + EPSILON, gamma))
 
     @staticmethod
     def compute_r_from_u_eq(u_eq, u_max, gamma=GAMMA):

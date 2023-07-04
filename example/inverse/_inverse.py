@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 from copy import deepcopy
 
 from road.network.road_network import RoadNetwork
+from road.network.route import MacroRoute
 
 class InverseProblem:
     
@@ -43,7 +44,9 @@ class InverseProblem:
         self.beg_state = None
         self.end_state = None
 
-        # hyperparams for optimization methods;
+        '''
+        Hyperparams for optimization methods
+        '''
 
         # number of episode evaluation that will be run for optimization;
 
@@ -51,7 +54,7 @@ class InverseProblem:
 
         # Gradient Descent;
 
-        self.gd_lr = 1e-1
+        self.gd_lr = 1e-3
 
         # CMA-ES
 
@@ -76,16 +79,16 @@ class InverseProblem:
 
         self.init_network()
 
-        self.set_state(self.random_state())
+        self.set_initial_state(self.random_initial_state())
 
-        self.beg_state = self.get_state()
+        self.beg_state = self.get_initial_state()
 
-        self.simulate()
+        self.simulate(False)
 
-        self.end_state = self.get_state()
+        self.end_state = self.get_target_state()
 
     
-    def simulate(self):
+    def simulate(self, differentiable: bool):
 
         '''
         Run simulation with road network for [num_step].
@@ -93,7 +96,7 @@ class InverseProblem:
 
         for _ in range(self.num_timestep):
 
-            self.network.forward(self.delta_time)
+            self.network.forward(self.delta_time, differentiable)            
 
     def evaluate(self):
 
@@ -117,7 +120,7 @@ class InverseProblem:
 
             # set random beginning state that optimization starts;
 
-            est = self.random_state()
+            est = self.random_initial_state()
 
             for i in range(4):
 
@@ -193,31 +196,39 @@ class InverseProblem:
         beg_errors = []
         end_errors = []
 
-        optimizer: th.optim.SGD = self.init_torch_optimizer(est_beg_state, lr)
+        optimizer: th.optim.Optimizer = self.init_torch_optimizer(est_beg_state, lr)
 
         pbar = tqdm(range(self.num_episode))
 
         for _ in pbar:
+            
+            self.clear_network()
 
-            self.set_state(est_beg_state)
+            self.set_initial_state(est_beg_state)
 
-            self.simulate()
-
-            est_end_state = self.get_state()
+            self.simulate(True)
+            
+            est_end_state = self.get_target_state()
 
             # compute error based on beginning state;
 
-            beg_error: th.Tensor = self.compute_error(self.beg_state, est_beg_state)
-            end_error: th.Tensor = self.compute_error(self.end_state, est_end_state)
+            beg_error: th.Tensor = self.compute_beg_error(self.beg_state, est_beg_state)
+            end_error: th.Tensor = self.compute_end_error(self.end_state, est_end_state)
 
             beg_errors.append(beg_error.item())
             end_errors.append(end_error.item())
 
             # optimize;
 
-            optimizer.zero_grad()
-            end_error.backward()
-            optimizer.step()
+            pbar.set_description("GD : Error = {:.6f}".format(end_error.item()))
+            
+            if end_error.requires_grad:
+                optimizer.zero_grad()
+                end_error.backward()
+                optimizer.step()
+            else:
+                print("There is no gradient we can use for GD, plz change settings...")
+                exit(-1)
 
             # apply bound;
 
@@ -227,8 +238,6 @@ class InverseProblem:
                 est_beg_state[1][:] = th.max(est_beg_state[1], lb[1])
                 est_beg_state[0][:] = th.min(est_beg_state[0], ub[0])
                 est_beg_state[1][:] = th.min(est_beg_state[1], ub[1])
-
-            pbar.set_description("GD : Error = {:.4f}".format(end_error.item()))
 
         return beg_errors, end_errors
 
@@ -270,7 +279,7 @@ class InverseProblem:
 
             for x in solutions:
 
-                beg_error = self.compute_error(self.beg_state, self.unvectorize(x)).item()
+                beg_error = self.compute_beg_error(self.beg_state, self.unvectorize(x)).item()
                 end_error = self.evaluate_vector_state(x).item()
 
                 if len(end_errors) < self.num_episode:
@@ -345,28 +354,49 @@ class InverseProblem:
         '''
 
         raise NotImplementedError()
-
-    def random_state(self):
-
-        '''
-        Get random state of the road network.
-        '''
-
-        raise NotImplementedError()
-
-    def set_state(self, state):
-
-        '''
-        Set state of the road network.
-        '''
-
-        raise NotImplementedError()
-
     
-    def get_state(self):
+    def clear_network(self):
+        
+        '''
+        Clear networks of previous traffic info.
+        '''
+        
+        for lane in self.network.lane.values():
+            
+            lane.clear()
+            
+        self.network.vehicle.clear()
+        self.network.micro_route.clear()
+        self.network.num_vehicle = 0
+    
+    def random_initial_state(self):
+        
+        '''
+        Get random initial state for road network.
+        '''
+        
+        raise NotImplementedError()
+
+    def set_initial_state(self, state):
 
         '''
-        Get state of the road network.
+        Set initial state of the road network.
+        '''
+
+        raise NotImplementedError()
+
+    def get_initial_state(self):
+
+        '''
+        Get initial state of the road network.
+        '''
+
+        raise NotImplementedError()
+    
+    def get_target_state(self):
+
+        '''
+        Get target state of the road network.
         '''
 
         raise NotImplementedError()
@@ -421,14 +451,16 @@ class InverseProblem:
         '''
 
         est_beg_state = self.unvectorize(vstate)
+        
+        self.clear_network()
 
-        self.set_state(est_beg_state)
+        self.set_initial_state(est_beg_state)
 
-        self.simulate()
+        self.simulate(False)
 
-        est_end_state = self.get_state()
+        est_end_state = self.get_target_state()
 
-        return self.compute_error(self.end_state, est_end_state)
+        return self.compute_end_error(self.end_state, est_end_state)
 
     @staticmethod
     def scipy_evaluate_function(vstate, problem, beg_errors, end_errors):
@@ -446,17 +478,25 @@ class InverseProblem:
 
         est_beg_state = problem.unvectorize(vstate)
 
-        beg_error = problem.compute_error(problem.beg_state, est_beg_state)
+        beg_error = problem.compute_beg_error(problem.beg_state, est_beg_state)
 
         beg_errors.append(beg_error.item())
         end_errors.append(end_error.item())
 
         return end_error.item()
 
-    def compute_error(self, sa, sb):
+    def compute_beg_error(self, sa, sb):
 
         '''
-        Compute error between two states.
+        Compute error between two beginning states.
+        '''
+
+        raise NotImplementedError()
+    
+    def compute_end_error(self, sa, sb):
+
+        '''
+        Compute error between two beginning states.
         '''
 
         raise NotImplementedError()

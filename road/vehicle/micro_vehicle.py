@@ -40,23 +40,23 @@ class MicroVehicle(Vehicle):
 
         # maximum acceleration;
 
-        a_max = speed_limit * 1.75
+        a_max = speed_limit * 1.
 
         # preferred acceleration;
         
-        a_pref = speed_limit * 1.25
+        a_pref = speed_limit * 0.8
 
         # target speed;
         
-        target_speed = speed_limit * 1.0
+        target_speed = speed_limit * 0.9
 
         # min space ahead;
         
-        min_space = vehicle_length * 0.3
+        min_space = vehicle_length * 0.1
 
         # preferred time to go;
         
-        time_pref = 0.4
+        time_pref = 0.1
 
         vehicle = MicroVehicle(-1, 
                                 0, 

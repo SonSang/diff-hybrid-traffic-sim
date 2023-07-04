@@ -1,8 +1,8 @@
 '''
-@ author: SonSang (Sanghyun Son)
+@ author: Yiling Qiao & SonSang (Sanghyun Son)
 @ email: shh1295@gmail.com
 
-Script to solve inverse problem in macroscopic traffic simulation.
+Script to solve inverse problem in hybrid traffic simulation.
 '''
 
 import argparse
@@ -12,8 +12,9 @@ import torch as th
 from example.inverse._inverse import InverseProblem
 from road.network.road_network import RoadNetwork
 from road.lane.dmacro_lane import dMacroLane
+from road.lane.dmicro_lane import dMicroLane
 
-class MacroInverseProblem(InverseProblem):
+class HybridInverseProblem(InverseProblem):
 
     def __init__(self, 
                 num_trial: int, 
@@ -29,6 +30,8 @@ class MacroInverseProblem(InverseProblem):
 
         self.num_cell = num_cell
         self.cell_length = cell_length
+        self.lane_length = num_cell * cell_length
+        
         self.dtype = th.float32
 
     def init_network(self):
@@ -40,33 +43,43 @@ class MacroInverseProblem(InverseProblem):
         num_cell = self.num_cell
         cell_length = self.cell_length
         speed_limit = self.speed_limit
-
-        lane_length = num_cell * cell_length
+        lane_length = self.lane_length
 
         # initialize density and speed of boundary cell randomly;
         
-        bdry_density = th.rand((2,), dtype=self.dtype)
-        bdry_speed = th.rand((2,), dtype=self.dtype) * speed_limit
+        bdry_density = th.rand((4,), dtype=self.dtype)
+        bdry_speed = th.rand((4,), dtype=self.dtype) * speed_limit
+        
+        # create network;
+        
+        self.network = RoadNetwork(speed_limit)
+        
+        # create first macro lane;
+        
+        lane = dMacroLane(0, lane_length, speed_limit, cell_length)
+        lane.set_leftmost_cell(bdry_density[0], bdry_speed[0])
+        lane.set_rightmost_cell(bdry_density[1], bdry_speed[1])
+        self.network.add_lane(lane)
 
         # initialize density and speed of inner cell randomly;
         
         init_density, init_speed = self.random_initial_state()
-
-        # create macro lane;
-
-        lane = dMacroLane(0, lane_length, speed_limit, cell_length)
-
-        # initialize lane;
-
         lane.set_state_vector_u(init_density, init_speed)
-        lane.set_leftmost_cell(bdry_density[0], bdry_speed[0])
-        lane.set_rightmost_cell(bdry_density[1], bdry_speed[1])
         
-        # create network;
-
-        self.network = RoadNetwork(speed_limit)
+        # create second micro lane;
+        
+        lane = dMicroLane(1, lane_length, speed_limit)
+        self.network.add_lane(lane)
+        
+        # create third macro lane;
+        lane = dMacroLane(2, lane_length, speed_limit, cell_length)
+        lane.set_leftmost_cell(bdry_density[2], bdry_speed[2])
+        lane.set_rightmost_cell(bdry_density[3], bdry_speed[3])
         self.network.add_lane(lane)
 
+        self.network.connect_lane(0, 1)
+        self.network.connect_lane(1, 2)
+        self.network.macro_route = self.network.create_random_macro_route()
 
     def random_initial_state(self):
 
@@ -242,7 +255,7 @@ class MacroInverseProblem(InverseProblem):
 
 if __name__ == "__main__":
 
-    parser = argparse.ArgumentParser("Script to solve inverse problem in macroscopic traffic simulation")
+    parser = argparse.ArgumentParser("Script to solve inverse problem in hybrid traffic simulation")
     parser.add_argument("--n_trial", type=int, default=5)
     parser.add_argument("--n_cell", type=int, default=10)
     parser.add_argument("--n_timestep", type=int, default=500)
@@ -264,6 +277,6 @@ if __name__ == "__main__":
 
     # problem solve;
 
-    run_name = "macro_{}".format(time.time())
-    problem = MacroInverseProblem(num_trial, num_timestep, num_episode, delta_time, speed_limit, run_name, num_cell, cell_length)
+    run_name = "hybrid_{}".format(time.time())
+    problem = HybridInverseProblem(num_trial, num_timestep, num_episode, delta_time, speed_limit, run_name, num_cell, cell_length)
     problem.evaluate()
