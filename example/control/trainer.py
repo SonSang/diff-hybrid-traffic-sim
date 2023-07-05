@@ -4,9 +4,11 @@ import os
 from gym import spaces
 import torch as th
 from tqdm import tqdm
+from torch.utils.tensorboard import SummaryWriter
 
 from highway_env.envs.common.abstract import AbstractEnv
 from example.control.controller import Controller
+from PIL import Image
 
 class Trainer:
 
@@ -31,6 +33,8 @@ class Trainer:
         self.controller = Controller(input_size, output_size, network_size)
         self.optimizer = th.optim.Adam(self.controller.parameters(), lr)
         self.best_eval_result = -float('inf')
+        
+        self.writer = None
 
     def train(self, 
                 num_episode_per_epoch: int, 
@@ -55,6 +59,8 @@ class Trainer:
         if not os.path.exists(log_path):
 
             os.makedirs(log_path)
+            
+        self.writer = SummaryWriter(log_path)
 
         epoch_tqdm = tqdm(range(num_epoch))
 
@@ -66,13 +72,17 @@ class Trainer:
 
             if epoch % num_eval_epoch == 0:
 
-                self.evaluate(num_eval_episode, log_path)
+                self.evaluate(epoch, num_eval_episode, log_path)
 
             # train;
 
             self.controller.train(True)
 
-            self.train_epoch(num_episode_per_epoch)
+            loss = self.train_epoch(num_episode_per_epoch)
+            
+            self.writer.add_scalar("loss/train", loss, epoch)
+            
+            epoch_tqdm.set_description("Loss: {:.6f}".format(loss))
 
             # free torch memory;
 
@@ -81,7 +91,7 @@ class Trainer:
 
             self.save(log_path + "/model.zip")
 
-    def evaluate(self, num_episode: int, log_path: str):
+    def evaluate(self, epoch: int, num_episode: int, log_path: str):
         
         '''
         Evaluate network.
@@ -97,13 +107,29 @@ class Trainer:
 
             for episode in range(num_episode):
 
-                total_reward += self.run_episode(False)[0]
-
+                reward, _, info = self.run_episode(False)
+                total_reward += reward
+                
+                # save img;
+                img_list = info['img']
+                img_path = log_path + '/eval_render/epoch_{}_episode_{}'.format(epoch, episode)
+                
+                if not os.path.exists(img_path):
+                    os.makedirs(img_path)
+                
+                for i, img in enumerate(img_list):
+                    
+                    if img is not None:
+                        
+                        im = Image.fromarray(img)
+                        im.save(img_path + "/{:08d}.png".format(i))
+                        
         avg_reward = total_reward / num_episode
 
+        self.writer.add_scalar("loss/eval", -avg_reward, epoch)
+        
         with open(log_path + "/eval.txt", 'a') as f:
-
-            f.write("{:.3f} \n".format(avg_reward))
+            f.write("{:08f}\n".format(-avg_reward))
 
         if avg_reward > self.best_eval_result:
 
@@ -121,7 +147,7 @@ class Trainer:
 
         for episode in range(num_episode):
 
-            curr_reward, action, simulator = self.run_episode(True)
+            curr_reward, action, info = self.run_episode(True)
 
             total_reward = total_reward + curr_reward
 
@@ -129,13 +155,15 @@ class Trainer:
 
         action.retain_grad()
 
-        loss = -total_reward
+        loss = (-total_reward) / num_episode
 
         self.optimizer.zero_grad()
         loss.backward()
 
-        print(action.grad)
+        #print(action.grad)
         self.optimizer.step()
+        
+        return loss
 
     def run_episode(self, differentiable: bool):
 
@@ -143,7 +171,8 @@ class Trainer:
 
         tenv = deepcopy(self.env)
 
-        obs = tenv.reset()
+        obs = tenv.observe()
+        #print(obs[:10])
 
         # print(obs)
 
@@ -158,9 +187,9 @@ class Trainer:
 
                 action = low + (high - low) * th.sigmoid(action)
 
-            print(action)
+            #print(action)
                 
-            obs, reward, terminal, _ = tenv.step(action, differentiable)
+            obs, reward, terminal, info = tenv.step(action, differentiable)
 
             episode_reward = episode_reward + reward
 
@@ -170,9 +199,9 @@ class Trainer:
 
         # self.env.reset()
 
-        print(episode_reward)
+        # print(episode_reward)
 
-        return episode_reward, action, tenv.simulator
+        return episode_reward, action, info
 
 
     def save(self, path: str):

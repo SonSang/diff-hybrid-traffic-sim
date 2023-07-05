@@ -9,8 +9,10 @@ from road.lane._micro_lane import MicroLane
 from road.vehicle.vehicle import DEFAULT_VEHICLE_LENGTH
 
 from dmath.operation import sigmoid
+from example.common.rms import RunningMean
 
 import numpy as np
+import torch as th
 
 MICRO_STOP_DISTANCE = 3.0
 MICRO_STOP_GRADIENT = 1e-0
@@ -37,6 +39,9 @@ class ItscpRoadNetwork(RoadNetwork):
 
         self.lane_waiting_micro_vehicle: Dict = {}
         self.lane_waiting_micro_route: Dict = {}
+        
+        self.signal_rms = RunningMean(100_000)
+        self.lane_incoming_acc: Dict = {}
 
     def interpolate_signal(self, signal, green_value, red_value):
 
@@ -245,8 +250,15 @@ class ItscpRoadNetwork(RoadNetwork):
         # get final delta values by weighted sum;
 
         if differentiable:
+            
+            with th.no_grad():
+                if isinstance(final_signal, th.Tensor):
+                    self.signal_rms.update(final_signal.cpu().numpy())
+                else:
+                    self.signal_rms.update(final_signal)
+                constant = 32. / np.abs(self.signal_rms.mean())
 
-            final_signal = sigmoid(final_signal - 0.5, constant=32)
+            final_signal = sigmoid(final_signal - 0.5, constant=constant)
 
             lane.head_position_delta = green_head_position_delta * final_signal + red_head_position_delta * (1.0 - final_signal)
             lane.head_speed_delta = green_head_speed_delta * final_signal + red_head_speed_delta * (1.0 - final_signal)

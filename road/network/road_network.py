@@ -310,13 +310,6 @@ class RoadNetwork:
         lane: MacroLane = self.lane[id]
         
         if left:
-            bdry_cell = lane.get_leftmost_cell()
-        else:
-            bdry_cell = lane.get_rightmost_cell()
-            
-        return bdry_cell.state.q.r, bdry_cell.state.u
-        
-        if left:
             num_adj_lane = lane.num_prev_lane()
         else:
             num_adj_lane = lane.num_next_lane()
@@ -345,6 +338,8 @@ class RoadNetwork:
                     adj_lane = self.macro_route.get_prev_lane(id)
                 else:
                     adj_lane = self.macro_route.get_next_lane(id)
+                
+                adj_lane = self.lane[adj_lane]
                     
             if adj_lane.is_macro():
 
@@ -361,6 +356,15 @@ class RoadNetwork:
                 return cell.state.q.r, cell.state.u
 
             else:
+                
+                # just use leftmost and rightmost cell;
+                
+                if left:
+                    bdry_cell = lane.get_leftmost_cell()
+                else:
+                    bdry_cell = lane.get_rightmost_cell()
+                    
+                return bdry_cell.state.q.r, bdry_cell.state.u
 
                 mi_adj_lane: MicroLane = adj_lane
 
@@ -468,11 +472,6 @@ class RoadNetwork:
 
         # if there is no vehicle, just set bdry as default;
         
-        lane.head_position_delta = DEFAULT_HEAD_POSITION_DELTA
-        lane.head_speed_delta = DEFAULT_HEAD_SPEED_DELTA
-
-        return
-
         if lane.num_vehicle() == 0:
 
             lane.head_position_delta = DEFAULT_HEAD_POSITION_DELTA
@@ -513,67 +512,67 @@ class RoadNetwork:
 
             # iterate through [next_lane]'s prev lanes and find possible leading vehicle;
 
-            for n_prev_lane in next_lane.prev_lane.values():
+            # for n_prev_lane in next_lane.prev_lane.values():
 
-                # if [n_prev_lane] is same as our lane, just continue;
+            #     # if [n_prev_lane] is same as our lane, just continue;
 
-                if n_prev_lane.id == id:
+            #     if n_prev_lane.id == id:
 
-                    continue
+            #         continue
 
-                if isinstance(n_prev_lane, MacroLane):
+            #     if isinstance(n_prev_lane, MacroLane):
 
-                    continue
+            #         continue
 
-                elif isinstance(n_prev_lane, MicroLane):
+            #     elif isinstance(n_prev_lane, MicroLane):
 
-                    if n_prev_lane.num_vehicle() == 0:
+            #         if n_prev_lane.num_vehicle() == 0:
 
-                        continue
+            #             continue
 
-                    if differentiable:
+            #         if differentiable:
 
-                        possible_lv = n_prev_lane.get_head_vehicle()
+            #             possible_lv = n_prev_lane.get_head_vehicle()
 
-                        # if possible leading vehicle does not proceed to same route, ignore it;
+            #             # if possible leading vehicle does not proceed to same route, ignore it;
 
-                        possible_lv_next_lane_id = self.micro_route[possible_lv.id].next_lane_id()
+            #             possible_lv_next_lane_id = self.micro_route[possible_lv.id].next_lane_id()
 
-                        if possible_lv_next_lane_id == -1 or possible_lv_next_lane_id != next_lane_id:
+            #             if possible_lv_next_lane_id == -1 or possible_lv_next_lane_id != next_lane_id:
 
-                            continue
+            #                 continue
 
-                        # score;
+            #             # score;
 
-                        possible_lv_offset = n_prev_lane.length - possible_lv.position
+            #             possible_lv_offset = n_prev_lane.length - possible_lv.position
 
-                        score = sigmoid(MICRO_BDRY_SMOOTH_OFFSET - possible_lv_offset,
-                                        SIGMOID_CONSTANT,)
+            #             score = sigmoid(MICRO_BDRY_SMOOTH_OFFSET - possible_lv_offset,
+            #                             SIGMOID_CONSTANT,)
 
-                        # compare remaining distance to the end of the lane;
-                        # if possible lv is ahead, then use it as lv;
+            #             # compare remaining distance to the end of the lane;
+            #             # if possible lv is ahead, then use it as lv;
 
-                        possible_lv_offset = possible_lv_offset - possible_lv.length * 0.5
+            #             possible_lv_offset = possible_lv_offset - possible_lv.length * 0.5
 
-                        ahead_score = sigmoid(curr_head_position_delta - possible_lv_offset, 
-                                            constant=AHEAD_SIGMOID_CONSTANT)
+            #             ahead_score = sigmoid(curr_head_position_delta - possible_lv_offset, 
+            #                                 constant=AHEAD_SIGMOID_CONSTANT)
 
-                        score = score * ahead_score
+            #             score = score * ahead_score
 
-                        possible_lv_score[possible_lv.id] = score
+            #             possible_lv_score[possible_lv.id] = score
 
-                        # delta;
+            #             # delta;
 
-                        position_delta = curr_head_position_delta + (possible_lv_offset - possible_lv.length * 0.5)
-                        position_delta = max(position_delta, 0.0)
-                        possible_lv_position_delta[possible_lv.id] = position_delta
+            #             position_delta = curr_head_position_delta + (possible_lv_offset - possible_lv.length * 0.5)
+            #             position_delta = max(position_delta, 0.0)
+            #             possible_lv_position_delta[possible_lv.id] = position_delta
 
-                        speed_delta = nv.speed - possible_lv.speed
-                        possible_lv_speed_delta[possible_lv.id] = speed_delta
+            #             speed_delta = nv.speed - possible_lv.speed
+            #             possible_lv_speed_delta[possible_lv.id] = speed_delta
 
-                else:
+            #     else:
 
-                    raise ValueError()
+            #         raise ValueError()
 
             # iterate through [curr_lane]'s next lanes and find possible leading vehicles;
 
@@ -591,29 +590,32 @@ class RoadNetwork:
 
                     # compute delta values based on the cell states;
 
-                    avg_density = 0
-                    avg_speed = 0
+                    # avg_density = 0
+                    # avg_speed = 0
 
-                    for cell in n_next_lane.curr_cell:
+                    # for cell in n_next_lane.curr_cell:
 
-                        avg_density = avg_density + cell.state.q.r
-                        avg_speed = avg_speed + cell.state.u
+                    #     avg_density = avg_density + cell.state.q.r
+                    #     avg_speed = avg_speed + cell.state.u
 
-                    avg_density = avg_density / n_next_lane.num_cell
-                    avg_speed = avg_speed / n_next_lane.num_cell
+                    # avg_density = avg_density / n_next_lane.num_cell
+                    # avg_speed = avg_speed / n_next_lane.num_cell
 
-                    virtual_position = n_next_lane.length * (1.0 - avg_density)
-                    virtual_speed = avg_speed
-                    virtual_vid = -1
+                    # virtual_position = n_next_lane.length * (1.0 - avg_density)
+                    # virtual_speed = avg_speed
+                    # virtual_vid = -1
 
-                    possible_lv_score[virtual_vid] = 1.0
+                    # possible_lv_score[virtual_vid] = 1.0
 
-                    position_delta = curr_head_position_delta + virtual_position
-                    position_delta = max(position_delta, 0.0)
-                    possible_lv_position_delta[virtual_vid] = position_delta
+                    # position_delta = curr_head_position_delta + virtual_position
+                    # position_delta = max(position_delta, 0.0)
+                    # possible_lv_position_delta[virtual_vid] = position_delta
 
-                    speed_delta = nv.speed - virtual_speed
-                    possible_lv_speed_delta[virtual_vid] = speed_delta
+                    # speed_delta = nv.speed - virtual_speed
+                    # possible_lv_speed_delta[virtual_vid] = speed_delta
+                    
+                    lane.head_position_delta = DEFAULT_HEAD_POSITION_DELTA
+                    lane.head_speed_delta = DEFAULT_HEAD_SPEED_DELTA
 
                 elif isinstance(n_next_lane, MicroLane):
 
@@ -621,17 +623,18 @@ class RoadNetwork:
 
                         continue
 
-                    if n_next_lane.id == next_lane.id or differentiable:
+                    # if n_next_lane.id == next_lane.id or differentiable:
+                    if n_next_lane.id == next_lane.id:
 
                         possible_lv = n_next_lane.get_tail_vehicle()
 
                         # if possible leading vehicle did not come from same route, ignore it;
 
-                        possible_lv_prev_lane_id = self.micro_route[possible_lv.id].prev_lane_id()
+                        # possible_lv_prev_lane_id = self.micro_route[possible_lv.id].prev_lane_id()
 
-                        if possible_lv_prev_lane_id == -1 or possible_lv_prev_lane_id != curr_lane_id:
+                        # if possible_lv_prev_lane_id == -1 or possible_lv_prev_lane_id != curr_lane_id:
 
-                            continue
+                        #     continue
 
                         possible_lv_offset = possible_lv.position
 

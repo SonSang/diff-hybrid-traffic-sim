@@ -2,7 +2,7 @@ default_config = {
 
     # number of intersections;
         
-    "num_intersection": 3,
+    "num_intersection": 1,
 
     # number of lanes for each road;
 
@@ -10,11 +10,11 @@ default_config = {
 
     # lane length (m);
 
-    "lane_length": 40,
+    "lane_length": 20,
 
     # speed limit (m/s);
 
-    "speed_limit": 30,
+    "speed_limit": 60,
 
     # cell length (m);
 
@@ -30,8 +30,8 @@ default_config = {
 
     # screen width and height;
 
-    "screen_width": 1440,
-    "screen_height": 1440,
+    "screen_width": 1080,
+    "screen_height": 1080,
 
     # screen scale;
 
@@ -43,16 +43,16 @@ default_config = {
 
     # policy length: time length (sec) that one action persist;
     
-    "policy_length": 30,
+    "policy_length": 10,
 
     # signal length: time length (sec) that one signal sequence persist;
     
-    "signal_length": 10,
+    "signal_length": 2,
 
     # action bounds;
 
-    "action_min": 0.3,
-    "action_max": 0.7,
+    "action_min": 0.1,
+    "action_max": 0.9,
 
     # number of actions for one episode;
 
@@ -72,7 +72,7 @@ default_config = {
 
     # simulation mode, can be [macro], [micro], or [hybrid];
 
-    "mode": "hybrid",   # "macro"
+    "mode": "macro",
 
     # render;
 

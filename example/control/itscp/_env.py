@@ -19,6 +19,7 @@ from road.lane.dmacro_lane import dMacroLane, MacroLane
 from road.lane.dmicro_lane import dMicroLane, MicroLane
 
 from dmath.operation import sigmoid
+from example.common.rms import RunningMean
 
 class LaneID:
 
@@ -117,6 +118,9 @@ class ItscpEnv(AbstractEnv):
         self.queue_length: Dict[LaneID, List] = {}
         self.flux: Dict[LaneID, List] = {}
         self.avg_speed: List = []
+        
+        self.is_static_rms = RunningMean(100_000)
+        self.render_eval = True
 
         super().__init__()
 
@@ -566,12 +570,13 @@ class ItscpEnv(AbstractEnv):
         self.flux.clear()
         self.avg_speed.clear()
 
-        self._simulate(action, differentiable)
+        img_list = self._simulate(action, differentiable)
 
         obs = self.observe()
         reward = self._reward(action)
         terminal = self._is_terminal()
         info = self._info(obs, action)
+        info['img'] = img_list
 
         self.queue_length.clear()
         self.flux.clear()
@@ -594,7 +599,11 @@ class ItscpEnv(AbstractEnv):
 
             # apply differentiable operation;
 
-            is_static = sigmoid(static_speed - speed, constant=16)
+            with th.no_grad():
+                data = (static_speed - speed).cpu().numpy()
+                self.is_static_rms.update(data)
+                constant = 16. / np.abs(self.is_static_rms.mean())
+            is_static = sigmoid(static_speed - speed, constant=constant)
 
         else:
 
@@ -695,8 +704,13 @@ class ItscpEnv(AbstractEnv):
                     if differentiable:
 
                         # apply differentiable operation;
+                        
+                        with th.no_grad():
+                            data = (static_speed - speed).cpu().numpy()
+                            self.is_static_rms.update(data)
+                            constant = 16. / np.abs(self.is_static_rms.mean())
 
-                        is_static = sigmoid(static_speed - speed, constant=32.0)
+                        is_static = sigmoid(static_speed - speed, constant=constant)
 
                     else:
 
@@ -727,17 +741,31 @@ class ItscpEnv(AbstractEnv):
 
             self.queue_length[lane_id].append(lane_queue_length)
 
-        if self.config["render"]:
+        img = None
+        
+        if (self.render_eval and not differentiable) or self.config["render"]:
+            
+            if not self.config['render']:
+                
+                img = self.render(action, 'rgb_array')
+                
+            else:
 
-            self.render(action)
+                self.render(action)
+                
+        return img
 
     def _simulate(self, action, differentiable: bool):
 
         self.time = 0
+        img_list = []
 
         for _ in range(self.num_timestep):
 
-            self._simulate_step(action, differentiable)
+            img = self._simulate_step(action, differentiable)
+            img_list.append(img)
+            
+        return img_list
 
     def _reward(self, action):
         """
@@ -897,12 +925,12 @@ class ItscpEnv(AbstractEnv):
 
             if lane_id.ploc == "west" or lane_id.ploc == "east":
 
-                prev_signal = sigmoid(curr_action - curr_phase_progress, constant=16) if differentiable \
+                prev_signal = sigmoid(curr_action - curr_phase_progress, constant=32) if differentiable \
                                 else float(curr_action > curr_phase_progress)
 
             else:
 
-                prev_signal = sigmoid(curr_phase_progress - curr_action, constant=16) if differentiable \
+                prev_signal = sigmoid(curr_phase_progress - curr_action, constant=32) if differentiable \
                                 else float(curr_phase_progress > curr_action)
                 
         else:
@@ -923,12 +951,12 @@ class ItscpEnv(AbstractEnv):
 
                 if lane_id.loc == "west" or lane_id.loc == "east":
 
-                    next_signal = sigmoid(curr_action - curr_phase_progress, constant=16) if differentiable \
+                    next_signal = sigmoid(curr_action - curr_phase_progress, constant=32) if differentiable \
                                 else float(curr_action > curr_phase_progress)
 
                 else:
 
-                    next_signal = sigmoid(curr_phase_progress - curr_action, constant=16) if differentiable \
+                    next_signal = sigmoid(curr_phase_progress - curr_action, constant=32) if differentiable \
                                 else float(curr_phase_progress > curr_action)
 
         return prev_signal, next_signal

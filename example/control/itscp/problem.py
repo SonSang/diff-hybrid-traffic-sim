@@ -2,117 +2,74 @@ import numpy as np
 from example.control.itscp._env import LaneID
 from typing import List, Dict
 
-PROBLEM_2_SCHEDULE = None
-
-def problem_0(lane_id: List[LaneID], num_timestep: int):
-
+def problem(lane_id: List[LaneID], num_timestep: int, num_session: int):
     '''
-    Only NS direction flows.
+    First divide entire timestep into [num_session] sessions.
+    Then for each session, randomly select which direction among
+    [North-South] and [West-East] should have more incoming flow
+    than the other.
     '''
+    
+    num_timestep_per_session = num_timestep // num_session
 
     schedule: Dict[LaneID, List[float]] = {}
+    
+    session_dir = []
+    for _ in range(num_session):
+        green_dir_ns = np.random.random((1)).item() > 0.5
+        if green_dir_ns:
+            session_dir.append("NS")
+        else:
+            session_dir.append("WE")
 
     for id in lane_id:
 
         curr_schedule = []
 
-        for _ in range(num_timestep):
-
-            if id.loc == 'south' or id.loc == 'north':
-
-                r = 0.0
-
+        for session in range(num_session):
+            
+            r = np.random.random((1)).item()
+            
+            if session_dir[session] == "NS":
+                
+                if id.loc == "north" or id.loc == "south":
+                    
+                    r = 0.9 + r * 0.1
+                    
+                else:
+                    
+                    r = 0.0 + r * 0.01
+                    
             else:
+                
+                if id.loc == "west" or id.loc == "east":
+                    
+                    r = 0.9 + r * 0.1
+                    
+                else:
+                    
+                    r = 0.0 + r * 0.01
 
-                r = 1.0
+            for _ in range(num_timestep_per_session):
 
-            curr_schedule.append(r)
+                curr_schedule.append(r)
+
+        curr_schedule = curr_schedule[:num_timestep]
 
         schedule[id] = curr_schedule
 
     return schedule
 
 def problem_1(lane_id: List[LaneID], num_timestep: int):
-
-    '''
-    NS flows at the first half of time, then WE flows rest of the time.
-    '''
-
-    schedule: Dict[LaneID, List[float]] = {}
-
-    for id in lane_id:
-
-        curr_schedule = []
-
-        for step in range(num_timestep):
-
-            if id.loc == 'south' or id.loc == 'north':
-
-                r = float(step < num_timestep * 0.5)
-
-            else:
-
-                r = float(step > num_timestep * 0.5)
-                
-            curr_schedule.append(r)
-
-        schedule[id] = curr_schedule
-
-    return schedule
+    
+    return problem(lane_id, num_timestep, 1)
 
 
 def problem_2(lane_id: List[LaneID], num_timestep: int):
+    
+    return problem(lane_id, num_timestep, 1)
 
-    '''
-    Random flow.
-    '''
 
-    global PROBLEM_2_SCHEDULE
-
-    if PROBLEM_2_SCHEDULE is None:
-
-        # only select one of directions to have incoming flow in one session;
-
-        num_session = 3
-
-        session_ns_flow = []
-
-        for _ in range(num_session):
-
-            r = np.random.random((1,)).item()
-
-            ns_flow = r < 0.5
-
-            session_ns_flow.append(ns_flow)
-
-        schedule: Dict[LaneID, List[float]] = {}
-
-        for id in lane_id:
-
-            curr_schedule = []
-
-            num_step_per_session = num_timestep // num_session
-
-            for session in range(num_session):
-
-                if id.loc == "north" or id.loc == "south":
-
-                    r = float(session_ns_flow[session])
-
-                else:
-
-                    r = 1.0 - float(session_ns_flow[session])
-
-                for step in range(num_step_per_session):
-
-                    curr_schedule.append(r)
-
-            for _ in range(num_timestep % num_session):
-
-                curr_schedule.append(curr_schedule[-1])
-
-            schedule[id] = curr_schedule
-
-        PROBLEM_2_SCHEDULE = schedule
-
-    return PROBLEM_2_SCHEDULE
+def problem_3(lane_id: List[LaneID], num_timestep: int):
+    
+    return problem(lane_id, num_timestep, 1)
