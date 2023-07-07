@@ -15,12 +15,18 @@ def problem(lane_id: List[LaneID], num_timestep: int, num_session: int):
     schedule: Dict[LaneID, List[float]] = {}
     
     session_dir = []
-    for _ in range(num_session):
-        green_dir_ns = np.random.random((1)).item() > 0.5
-        if green_dir_ns:
-            session_dir.append("NS")
+    for i in range(num_session):
+        if i == 0:
+            green_dir_ns = np.random.random((1)).item() > 0.5
+            if green_dir_ns:
+                session_dir.append("NS")
+            else:
+                session_dir.append("WE")
         else:
-            session_dir.append("WE")
+            if session_dir[-1] == "NS":
+                session_dir.append("WE")
+            else:
+                session_dir.append("NS")
 
     for id in lane_id:
 
@@ -67,9 +73,9 @@ def problem_1(lane_id: List[LaneID], num_timestep: int):
 
 def problem_2(lane_id: List[LaneID], num_timestep: int):
     
-    return problem(lane_id, num_timestep, 1)
+    return problem(lane_id, num_timestep, 2)
 
 
 def problem_3(lane_id: List[LaneID], num_timestep: int):
     
-    return problem(lane_id, num_timestep, 1)
+    return problem(lane_id, num_timestep, 3)

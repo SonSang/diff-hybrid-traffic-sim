@@ -300,11 +300,6 @@ class RoadNetwork:
 
         '''
         Get boundary values for given macro lane.
-        
-        If the given macro lane has...
-        1. Multiple adj lanes: Use adj lane specified in [self.macro_route].
-        2. Single adj lane: Use it.
-        3. No adj lane: Use the lane's leftmost or rightmost cell.
         '''
         
         lane: MacroLane = self.lane[id]
@@ -365,23 +360,6 @@ class RoadNetwork:
                     bdry_cell = lane.get_rightmost_cell()
                     
                 return bdry_cell.state.q.r, bdry_cell.state.u
-
-                mi_adj_lane: MicroLane = adj_lane
-
-                if left:
-
-                    # for prev micro lane, we do not care about it;
-
-                    r = 0.0
-                    u = self.speed_limit
-
-                else:
-
-                    # for next micro lane, we use its average density and speed;
-
-                    r, u = self.get_macro_state_of_micro_lane(mi_adj_lane.id, differentiable)
-
-                return r, u
 
     def setup_macro_boundary(self, id: int, differentiable: bool):
 
@@ -452,11 +430,6 @@ class RoadNetwork:
 
         '''
         Find brdy values for given micro lane.
-
-        By iterating through next lanes in the route of the vehicle,
-        this function finds the leading vehicle in (possibly) differentiable
-        manner. This function is needed to set bdry conditions of 
-        micro lanes in this road network.
         '''
 
         # to make decision process for leading vehicle differentiable, 
@@ -464,8 +437,7 @@ class RoadNetwork:
 
         MICRO_BDRY_SMOOTH_OFFSET = 5.0
         SIGMOID_CONSTANT = 16.0 / MICRO_BDRY_SMOOTH_OFFSET
-        AHEAD_SIGMOID_CONSTANT = 256.0
-
+        
         lane: MicroLane = self.lane[id]
 
         assert lane.is_micro(), ""
@@ -509,71 +481,6 @@ class RoadNetwork:
 
             found_direct_leading_vehicle = False
             is_next_lane_micro = False
-
-            # iterate through [next_lane]'s prev lanes and find possible leading vehicle;
-
-            # for n_prev_lane in next_lane.prev_lane.values():
-
-            #     # if [n_prev_lane] is same as our lane, just continue;
-
-            #     if n_prev_lane.id == id:
-
-            #         continue
-
-            #     if isinstance(n_prev_lane, MacroLane):
-
-            #         continue
-
-            #     elif isinstance(n_prev_lane, MicroLane):
-
-            #         if n_prev_lane.num_vehicle() == 0:
-
-            #             continue
-
-            #         if differentiable:
-
-            #             possible_lv = n_prev_lane.get_head_vehicle()
-
-            #             # if possible leading vehicle does not proceed to same route, ignore it;
-
-            #             possible_lv_next_lane_id = self.micro_route[possible_lv.id].next_lane_id()
-
-            #             if possible_lv_next_lane_id == -1 or possible_lv_next_lane_id != next_lane_id:
-
-            #                 continue
-
-            #             # score;
-
-            #             possible_lv_offset = n_prev_lane.length - possible_lv.position
-
-            #             score = sigmoid(MICRO_BDRY_SMOOTH_OFFSET - possible_lv_offset,
-            #                             SIGMOID_CONSTANT,)
-
-            #             # compare remaining distance to the end of the lane;
-            #             # if possible lv is ahead, then use it as lv;
-
-            #             possible_lv_offset = possible_lv_offset - possible_lv.length * 0.5
-
-            #             ahead_score = sigmoid(curr_head_position_delta - possible_lv_offset, 
-            #                                 constant=AHEAD_SIGMOID_CONSTANT)
-
-            #             score = score * ahead_score
-
-            #             possible_lv_score[possible_lv.id] = score
-
-            #             # delta;
-
-            #             position_delta = curr_head_position_delta + (possible_lv_offset - possible_lv.length * 0.5)
-            #             position_delta = max(position_delta, 0.0)
-            #             possible_lv_position_delta[possible_lv.id] = position_delta
-
-            #             speed_delta = nv.speed - possible_lv.speed
-            #             possible_lv_speed_delta[possible_lv.id] = speed_delta
-
-            #     else:
-
-            #         raise ValueError()
-
             # iterate through [curr_lane]'s next lanes and find possible leading vehicles;
 
             for n_next_lane in curr_lane.next_lane.values():
@@ -588,32 +495,6 @@ class RoadNetwork:
 
                     is_next_lane_micro = True
 
-                    # compute delta values based on the cell states;
-
-                    # avg_density = 0
-                    # avg_speed = 0
-
-                    # for cell in n_next_lane.curr_cell:
-
-                    #     avg_density = avg_density + cell.state.q.r
-                    #     avg_speed = avg_speed + cell.state.u
-
-                    # avg_density = avg_density / n_next_lane.num_cell
-                    # avg_speed = avg_speed / n_next_lane.num_cell
-
-                    # virtual_position = n_next_lane.length * (1.0 - avg_density)
-                    # virtual_speed = avg_speed
-                    # virtual_vid = -1
-
-                    # possible_lv_score[virtual_vid] = 1.0
-
-                    # position_delta = curr_head_position_delta + virtual_position
-                    # position_delta = max(position_delta, 0.0)
-                    # possible_lv_position_delta[virtual_vid] = position_delta
-
-                    # speed_delta = nv.speed - virtual_speed
-                    # possible_lv_speed_delta[virtual_vid] = speed_delta
-                    
                     lane.head_position_delta = DEFAULT_HEAD_POSITION_DELTA
                     lane.head_speed_delta = DEFAULT_HEAD_SPEED_DELTA
 
@@ -627,15 +508,6 @@ class RoadNetwork:
                     if n_next_lane.id == next_lane.id:
 
                         possible_lv = n_next_lane.get_tail_vehicle()
-
-                        # if possible leading vehicle did not come from same route, ignore it;
-
-                        # possible_lv_prev_lane_id = self.micro_route[possible_lv.id].prev_lane_id()
-
-                        # if possible_lv_prev_lane_id == -1 or possible_lv_prev_lane_id != curr_lane_id:
-
-                        #     continue
-
                         possible_lv_offset = possible_lv.position
 
                         if n_next_lane.id == next_lane.id:

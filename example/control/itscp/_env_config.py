@@ -30,8 +30,8 @@ default_config = {
 
     # screen width and height;
 
-    "screen_width": 1080,
-    "screen_height": 1080,
+    "screen_width": 720,
+    "screen_height": 720,
 
     # screen scale;
 

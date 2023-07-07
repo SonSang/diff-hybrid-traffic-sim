@@ -1,3 +1,3 @@
-python example/control/itscp/run.py --mode=hybrid --problem=1 --n_trial=3 --n_intersection=3 --n_lane=1 --lane_length=10 --speed_limit=60 --simulation_length=30 --signal_length=6 --render=False --n_episode=200 --lr=1e-3
-python example/control/itscp/run.py --mode=hybrid --problem=2 --n_trial=3 --n_intersection=3 --n_lane=1 --lane_length=10 --speed_limit=60 --simulation_length=30 --signal_length=6 --render=False --n_episode=200 --lr=1e-3
-python example/control/itscp/run.py --mode=hybrid --problem=3 --n_trial=3 --n_intersection=3 --n_lane=1 --lane_length=10 --speed_limit=60 --simulation_length=30 --signal_length=6 --render=False --n_episode=200 --lr=1e-3
+python example/control/itscp/run.py --mode=hybrid --problem=1 --n_trial=1 --n_intersection=3 --n_lane=1 --lane_length=5 --speed_limit=60 --simulation_length=20 --signal_length=4 --n_episode=100 --lr=1e-4
+python example/control/itscp/run.py --mode=hybrid --problem=2 --n_trial=1 --n_intersection=3 --n_lane=1 --lane_length=5 --speed_limit=60 --simulation_length=20 --signal_length=4 --n_episode=100 --lr=1e-4
+python example/control/itscp/run.py --mode=hybrid --problem=3 --n_trial=1 --n_intersection=3 --n_lane=1 --lane_length=5 --speed_limit=60 --simulation_length=20 --signal_length=4 --n_episode=100 --lr=1e-4

@@ -19,7 +19,6 @@ if __name__ == "__main__":
     parser.add_argument("--speed_limit", type=float, default=60.)
     parser.add_argument("--simulation_length", type=int, default=10)
     parser.add_argument("--signal_length", type=int, default=2)
-    parser.add_argument("--render", type=bool, default=False)
     parser.add_argument("--n_episode", type=int, default=200)
     parser.add_argument("--lr", type=float, default=1e-3)
     args = parser.parse_args()
@@ -40,7 +39,7 @@ if __name__ == "__main__":
     speed_limit = args.speed_limit
     simulation_length = args.simulation_length
     signal_length = args.signal_length
-    render = args.render
+    render = False
     num_episode = args.n_episode
     lr = args.lr
     
@@ -69,4 +68,4 @@ if __name__ == "__main__":
         # ours;
         env.render_eval = True
         trainer = Trainer(env, lr=lr)
-        trainer.train(1, num_episode, 1, 1, log_path)
+        trainer.train(1, num_episode + 1, num_episode // 10, 1, log_path)
