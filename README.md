@@ -21,8 +21,8 @@ In this repository, we provide scripts for solving inverse problems and intersec
 In this problem, we aim to find initial traffic states that end up in the final states which are given as input.
 The optimization graphs below (Macro, Micro, and Hybrid from left to right) show that our gradient based method converges to the better initial states much faster than the other gradient-free methods.
 
-<img src="https://github.com/SonSang/diff-hybrid-traffic-sim/blob/master/example/_result/inverse/macro/end_optimization_graph.png" alt="Macro" width="300"/><img src="https://github.com/SonSang/diff-hybrid-traffic-sim/blob/master/example/_result/inverse/micro/end_optimization_graph.png" alt="Micro" width="300"/>
-<img src="https://github.com/SonSang/diff-hybrid-traffic-sim/blob/master/example/_result/inverse/hybrid/end_optimization_graph.png" alt="Hybrid" width="300"/>
+<img src="https://github.com/SonSang/diff-hybrid-traffic-sim/blob/master/example/_result/inverse/macro/end_optimization_graph.png" alt="Macro" width="200"/><img src="https://github.com/SonSang/diff-hybrid-traffic-sim/blob/master/example/_result/inverse/micro/end_optimization_graph.png" alt="Micro" width="200"/>
+<img src="https://github.com/SonSang/diff-hybrid-traffic-sim/blob/master/example/_result/inverse/hybrid/end_optimization_graph.png" alt="Hybrid" width="200"/>
 
 Users can run following commands to solve this problem.
 
@@ -37,12 +37,12 @@ python example/inverse/hybrid.py
 In this problem, we aim to optimize the time allocations for traffic signals so that it can minimize the traffic flow that waits for the signal.
 For instance, we can optimize the traffic signals to reduce waiting traffic shown in left to right. Note that traffic rendered in red is reduced.
 
-<img src="https://github.com/SonSang/diff-hybrid-traffic-sim/blob/master/example/_result/control/itscp/macro/macro2/epoch_0.gif" alt="Before" width="450"/> <img src="https://github.com/SonSang/diff-hybrid-traffic-sim/blob/master/example/_result/control/itscp/macro/macro2/epoch_100.gif" alt="Before" width="450"/>
+<img src="https://github.com/SonSang/diff-hybrid-traffic-sim/blob/master/example/_result/control/itscp/macro/macro2/epoch_0.gif" alt="Before" width="300"/> <img src="https://github.com/SonSang/diff-hybrid-traffic-sim/blob/master/example/_result/control/itscp/macro/macro2/epoch_100.gif" alt="Before" width="300"/>
 
 The optimization graphs below (Macro, Micro, and Hybrid from left to right) show that our differentiable simulator can be used for this task successfully.
 
-<img src="https://github.com/SonSang/diff-hybrid-traffic-sim/blob/master/example/_result/control/itscp/macro/itscp_optimization_graph.png" alt="Macro" width="300"/> <img src="https://github.com/SonSang/diff-hybrid-traffic-sim/blob/master/example/_result/control/itscp/micro/itscp_optimization_graph.png" alt="Micro" width="300"/> 
-<img src="https://github.com/SonSang/diff-hybrid-traffic-sim/blob/master/example/_result/control/itscp/hybrid/itscp_optimization_graph.png" alt="Hybrid" width="300"/>
+<img src="https://github.com/SonSang/diff-hybrid-traffic-sim/blob/master/example/_result/control/itscp/macro/itscp_optimization_graph.png" alt="Macro" width="200"/> <img src="https://github.com/SonSang/diff-hybrid-traffic-sim/blob/master/example/_result/control/itscp/micro/itscp_optimization_graph.png" alt="Micro" width="200"/> 
+<img src="https://github.com/SonSang/diff-hybrid-traffic-sim/blob/master/example/_result/control/itscp/hybrid/itscp_optimization_graph.png" alt="Hybrid" width="200"/>
 
 Users can run following commands to solve this problem.
 
